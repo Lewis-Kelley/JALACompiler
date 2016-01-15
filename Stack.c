@@ -11,6 +11,7 @@ void stack_push(Stack *stack, char *name) {
 		stack->names = (char **)malloc(sizeof(char*));
 	else
 		stack->names = (char **)realloc(stack->names, (stack->size + 1) * sizeof(char *));
+	stack->names[stack->size] = (char *)malloc(100);
 
 	strcpy(stack->names[stack->size++], name);
 }
@@ -28,8 +29,10 @@ char * stack_pop(Stack *stack) {
 
 	ret = stack->names[--stack->size];
 
+	free(stack->names[stack->size]);
+
 	if(stack->size == 1)
-		stack->names = NULL;
+		free(stack->names);
 	else
 		stack->names = (char **)realloc(stack->names, (stack->size) * sizeof(char *));
 
@@ -60,4 +63,17 @@ char * stack_deep_peek(Stack stack) {
 		return NULL;
 
 	return stack.names[stack.size - 2];
+}
+
+/**
+ * Prints out the data on the stack.
+ * Only used for debugging purposes.
+ */
+void print_stack(Stack stack) {
+	int index = stack.size - 1;
+	printf("---TOP---\n");
+	while(index >= 0) {
+		printf("%s\n", stack.names[index--]);
+	}
+	printf("---BOT---\n");
 }

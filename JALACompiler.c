@@ -28,6 +28,13 @@ typedef enum {
 	EQUAL, NOT_EQUAL, LESSER, GREATER, LESSER_EQ, GREATER_EQ
 } Comparison;
 
+/** @enum Type
+ * Holds the different types that are recognized.
+ */
+typedef enum {
+	VOID, INT
+} Type;
+
 /**
  * Returns the first word in the line as a string.
  * Note that the return string must be freed
@@ -64,7 +71,7 @@ char * read_word(char *line) {
 		word[index++] = cpy[base++];
 	}
 
-	word[index + 1] = '\0';
+	word[index] = '\0';
 	free(cpy);
 
 	return word;
@@ -96,9 +103,10 @@ char * read_next_line(FILE *file) {
  * @param output_file Assembly file that is being written.
  * @param block_ct Keeps track of the number of each type of block so as to give each unique names.
  * @param stack The current status of the stack at this point in the code.
+ * @param string_set Hashmap linking variables to memory addresses.
  * @return The last line read which includes the closing }.
  */
-char * read_block(FILE *input_file, FILE *output_file, Stack *stack, Block_ct *block_ct) {
+char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list **string_set, Block_ct *block_ct) {
 	char *line = read_next_line(input_file);
 	char *first_var = NULL;
 
@@ -111,7 +119,7 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, Block_ct *b
 			line += strlen(first_var) + 1;
 
 			first_var = read_word(line);
-			string_set_add(&local_vars, first_var);
+			/* string_set_add(&local_vars, first_var); */
 
 			line += strlen(first_var) + 1;
 
@@ -131,29 +139,17 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, Block_ct *b
  *
  * @param stack The current status of the memory stack.
  * @param headline The header line for the function.
- * @return Ordered list of the parameters from bottom of the stack to the top.
  */
-char **read_func_header(Stack *stack, char *headline) {
+void read_func_header(Stack *stack, char *headline) {
 	char *parameter_line = strchr(headline, '(') + 1; // The header line starting with the (
-	char *parameter = NULL; //Holds the next parameter's name
-	char **parameter_list; //List of all the parameters
-	int par_ct = str_inst_ct(parameter_line, "int "); //Parameter count
-
-	parameter_list = (char **)malloc(par_ct * sizeof(char *));
-	for(int i = 0; i < par_ct; i++)
-		parameter_list[i] = (char *)malloc(100);
-
-	par_ct = 0;
 
 	while((parameter_line = strstr(parameter_line, "int "))) {
 		parameter_line += 4;
 
-		parameter = read_word(parameter_line);
-		strcpy(parameter_list[par_ct++], parameter);
-		free(parameter);
+		stack_push(stack, read_word(parameter_line));
 	}
 
-	return parameter_list;
+	print_stack(*stack);
 }
 
 /**
@@ -253,10 +249,58 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, ch
  * @param output_file Assembly file that is being written.
  * @param headline String representation of the header line of this function.
  * @param block_ct Keeps track of the number of each type of block so as to give each unique names.
+ * @param ret_type The type of function this is.
  */
-void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *block_ct) {
+void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *block_ct, Type ret_type) {
 	Stack stack = {NULL, 0};
-	char **parameter_list = read_func_header(&stack, headline);
+	String_list *string_set = (String_list *)malloc(LIST_LEN * sizeof(String_list));
+	for(int i = 0; i < LIST_LEN; i++) { //Initialize each individual list in the string set
+		string_set[i].length = 0;
+	}
+
+	char *last_line;
+	char *popped_var;
+
+	read_func_header(&stack, headline);
+
+	// Make memory locations for the parameters
+	for(int i = 0; i < stack.size; i++) {
+		string_set_add(&string_set, stack.names[i], MEM_STRT + 4 * i);
+	}
+	print_string_set(string_set);
+
+	/* last_line = read_block(input_file, output_file, &stack, &string_set, block_ct); */
+	
+	/* //Empty stack */
+	/* while(stack.size > 0) { */
+	/* 	popped_var = stack_pop(&stack); */
+	/* 	fprintf(output_file, "pop %x\n", string_set_remove_str(&string_set, popped_var)); */
+	/* } */
+
+	/* switch(ret_type) { */
+	/* case VOID: */
+	/* 	if(strstr(last_line, "return")) { */
+	/* 		free(last_line); */
+	/* 		last_line = read_next_line(input_file); */
+	/* 		while(!strchr(last_line, '}')) { */
+	/* 			free(last_line); */
+	/* 			last_line = read_next_line(input_file); */
+	/* 		} */
+	/* 	} */
+	/* 	break; */
+	/* case INT: //TODO Incorporate return exp. */
+	/* 	free(last_line); */
+	/* 	last_line = read_next_line(input_file); */
+	/* 	while(!strchr(last_line, '}')) { */
+	/* 		free(last_line); */
+	/* 		last_line = read_next_line(input_file); */
+	/* 	} */
+	/* 	break; */
+	/* } */
+
+	fprintf(output_file, "jr\n");
+	free_string_set(string_set);
+	free(string_set);
 }
 
 /**
@@ -306,7 +350,7 @@ int main(int argc, char *argv[]) {
 
 				if(strlen(line) > 4) {
 					fprintf(output_file, "%s:\n", read_word(line + 4));
-					read_func(input_file, output_file, line, &block_ct);
+					read_func(input_file, output_file, line, &block_ct, INT);
 				}
 			} else if(strstr(first_word, "void") == first_word) { //Found a void function
 				#ifdef DEBUG
@@ -315,7 +359,7 @@ int main(int argc, char *argv[]) {
 
 				if(strlen(line) > 5) {
 					fprintf(output_file, "%s:\n", read_word(line + 5));
-					read_func(input_file, output_file, line, &block_ct);
+					read_func(input_file, output_file, line, &block_ct, VOID);
 				}
 			}
 		} else {

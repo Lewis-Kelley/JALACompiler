@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 /** @struct Stack
  * Holds the current contents of the memory stack.
@@ -13,3 +14,4 @@ void stack_push(Stack *stack, char *name);
 char * stack_pop(Stack *stack);
 char * stack_shallow_peek(Stack stack);
 char * stack_deep_peek(Stack stack);
+void print_stack(Stack stack);
