@@ -20,7 +20,7 @@ void new_string_list(String_list *list);
 void string_list_append(String_list *list, char *str, int addr);
 int string_list_remove_str(String_list *list, char *str);
 int string_list_lookup(String_list list, char *str);
-void free_string_list(String_list *list);
+void free_string_list(String_list list);
 
 void string_set_init(String_list **set);
 void string_set_clean(String_list **set);

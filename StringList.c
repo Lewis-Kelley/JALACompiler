@@ -25,6 +25,8 @@ int hash_func(char *str) {
  * @param addr The address where the variable named by str is stored.
  */
 void string_list_append(String_list *list, char *str, int addr) {
+	printf("Starting string_list_append.\n");
+	printf("list->length: %d\n", list->length);
 	if(list->length == 0) {
 		list->keys = (char **)malloc(sizeof(char *));
 		list->addrs = (int *)malloc(sizeof(int));
@@ -33,12 +35,14 @@ void string_list_append(String_list *list, char *str, int addr) {
 		list->addrs = (int *)realloc(list->addrs, (list->length + 1) * sizeof(char *));
 	}
 
+	printf("We're halway there\n");
 	list->keys[list->length] = (char *)malloc(100);
 	list->keys[list->length][0] = '\0';
 
 	strcpy(list->keys[list->length], str);
 	list->addrs[list->length] = addr;
 	list->length++;
+	printf("Finishing string_list_append.\n");
 }
 
 /**
@@ -96,18 +100,15 @@ int string_list_lookup(String_list list, char *str) {
  *
  * @param list String list to be emptied.
  */
-void free_string_list(String_list *list) {
-	if(list == NULL)
-		return;
-
-	for(int i = 0; i < list->length; i++) {
-		free(list->keys[i]);
+void free_string_list(String_list list) {
+	for(int i = 0; i < list.length; i++) {
+		free(list.keys[i]);
 	}
 
-	if(list->keys != NULL)
-		free(list->keys);
-	if(list->addrs != NULL)
-		free(list->addrs);
+	if(list.keys != NULL)
+		free(list.keys);
+	if(list.addrs != NULL)
+		free(list.addrs);
 }
 
 /**
@@ -129,7 +130,7 @@ void string_set_add(String_list **set, char *str, int addr) {
  * @return The memory address of str if the removal is successful, 0 otherwise.
  */
 int string_set_remove_str(String_list **set, char *str) {
-	return string_list_remove_str(set[hash_func(str)], str);
+	return string_list_remove_str(*set + hash_func(str) * sizeof(String_list), str);
 }
 
 /**
@@ -140,7 +141,7 @@ int string_set_remove_str(String_list **set, char *str) {
  * @return The memory address of str if the string is contained in the set.
  */
 int string_set_contains(String_list *set, char *str) {
-	return string_list_lookup(set[hash_func(str)], str);
+	return string_list_lookup(*(set + hash_func(str) * sizeof(String_list)), str);
 }
 
 /**
@@ -153,8 +154,8 @@ void free_string_set(String_list *set) {
 		return;
 
 	for(int i = 0; i < LIST_LEN; i++) {
-		free_string_list(set + i * sizeof(String_list));
-		free(set + i * sizeof(String_list));
+		free_string_list(*(set + i * sizeof(String_list)));
+		free(set + i * sizeof(String_list)); //FIXME Seg fault here
 	}
 }
 

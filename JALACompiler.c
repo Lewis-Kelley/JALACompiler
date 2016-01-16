@@ -30,9 +30,10 @@ typedef enum {
 
 /** @enum Type
  * Holds the different types that are recognized.
+ * MAIN is special, since it shouldn't actually return anything, nor write a jr at the end of the function.
  */
 typedef enum {
-	VOID, INT
+	VOID, INT, MAIN
 } Type;
 
 /**
@@ -82,9 +83,14 @@ char * read_word(char *line) {
  * Leading and trailing whitespace will be removed, as will comments.
  *
  * @param file The file to be read from.
+ * @param line_ct A count of the lines read.
  * @return A string representation of the next line in the file.
  */
-char * read_next_line(FILE *file) {
+char * read_next_line(FILE *file, int *line_ct) {
+	#ifdef DEBUG
+	printf("-----Parsing line %3d-----\n", ++(*line_ct));
+	#endif
+
 	if(file != NULL) {
 		char *line = (char *)malloc(100);
 
@@ -104,10 +110,11 @@ char * read_next_line(FILE *file) {
  * @param block_ct Keeps track of the number of each type of block so as to give each unique names.
  * @param stack The current status of the stack at this point in the code.
  * @param string_set Hashmap linking variables to memory addresses.
+ * @param line_ct The line number that is currently being parsed.
  * @return The last line read which includes the closing }.
  */
-char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list **string_set, Block_ct *block_ct) {
-	char *line = read_next_line(input_file);
+char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list **string_set, Block_ct *block_ct, int *line_ct) {
+	char *line = read_next_line(input_file, line_ct);
 	char *first_var = NULL;
 
 	String_list *local_vars = (String_list *)malloc(LIST_LEN * sizeof(String_list));
@@ -149,7 +156,9 @@ void read_func_header(Stack *stack, char *headline) {
 		stack_push(stack, read_word(parameter_line));
 	}
 
+	#ifdef DEBUG
 	print_stack(*stack);
+	#endif
 }
 
 /**
@@ -163,7 +172,7 @@ void read_func_header(Stack *stack, char *headline) {
  * @return The last line read, that being the first line outside of the if statement.
  * This is necessary as it must check the next line for an else.
  */
-char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, char *headline, Stack *stack) {
+char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, char *headline, Stack *stack, int *line_ct) {
 	char *line = strchr(headline, '(') + 1;
 	char *first = read_word(headline);
 	int first_is_var = 0;
@@ -211,7 +220,7 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, ch
 			if(str_to_int(first) != str_to_int(second)) { //Check if the execution will ever be run
 				int open_ct = 1;
 				if(strchr(line, '{') < 0)
-					line = read_next_line(input_file);
+					line = read_next_line(input_file, line_ct);
 
 				while(open_ct >= 0) { //Loop until finding the close of the if statement
 					if(strchr(line, '}') >= 0) {
@@ -249,9 +258,10 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, ch
  * @param output_file Assembly file that is being written.
  * @param headline String representation of the header line of this function.
  * @param block_ct Keeps track of the number of each type of block so as to give each unique names.
+ * @param line_ct The line number that is currently being parsed.
  * @param ret_type The type of function this is.
  */
-void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *block_ct, Type ret_type) {
+void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *block_ct, Type ret_type, int *line_ct) {
 	Stack stack = {NULL, 0};
 	String_list *string_set = (String_list *)malloc(LIST_LEN * sizeof(String_list));
 	for(int i = 0; i < LIST_LEN; i++) { //Initialize each individual list in the string set
@@ -265,42 +275,51 @@ void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *bl
 
 	// Make memory locations for the parameters
 	for(int i = 0; i < stack.size; i++) {
+		printf("i: %d\n", i);
 		string_set_add(&string_set, stack.names[i], MEM_STRT + 4 * i);
 	}
+	printf("Hello\n");
 	print_string_set(string_set);
 
-	/* last_line = read_block(input_file, output_file, &stack, &string_set, block_ct); */
-	
-	/* //Empty stack */
-	/* while(stack.size > 0) { */
-	/* 	popped_var = stack_pop(&stack); */
-	/* 	fprintf(output_file, "pop %x\n", string_set_remove_str(&string_set, popped_var)); */
-	/* } */
+	last_line = read_block(input_file, output_file, &stack, &string_set, block_ct, line_ct);
 
-	/* switch(ret_type) { */
-	/* case VOID: */
-	/* 	if(strstr(last_line, "return")) { */
-	/* 		free(last_line); */
-	/* 		last_line = read_next_line(input_file); */
-	/* 		while(!strchr(last_line, '}')) { */
-	/* 			free(last_line); */
-	/* 			last_line = read_next_line(input_file); */
-	/* 		} */
-	/* 	} */
-	/* 	break; */
-	/* case INT: //TODO Incorporate return exp. */
-	/* 	free(last_line); */
-	/* 	last_line = read_next_line(input_file); */
-	/* 	while(!strchr(last_line, '}')) { */
-	/* 		free(last_line); */
-	/* 		last_line = read_next_line(input_file); */
-	/* 	} */
-	/* 	break; */
-	/* } */
+	//Empty stack
+	while(stack.size > 0) {
+		popped_var = stack_pop(&stack);
+		fprintf(output_file, "pop %x\n", string_set_remove_str(&string_set, popped_var));
+	}
 
-	fprintf(output_file, "jr\n");
-	free_string_set(string_set);
-	free(string_set);
+	switch(ret_type) {
+	case VOID:
+	case MAIN:
+		if(strstr(last_line, "return")) {
+			free(last_line);
+			last_line = read_next_line(input_file, line_ct);
+			while(!strchr(last_line, '}')) {
+				free(last_line);
+				last_line = read_next_line(input_file, line_ct);
+			}
+		}
+		break;
+	case INT: //TODO Incorporate return exp.
+		free(last_line);
+		last_line = read_next_line(input_file, line_ct);
+		while(!strchr(last_line, '}')) {
+			free(last_line);
+			last_line = read_next_line(input_file, line_ct);
+		}
+		break;
+	}
+
+	if(ret_type != MAIN) //If main function, don't put the jr at the end
+		fprintf(output_file, "jr\n");
+
+	#ifdef DEBUG
+	printf("Finished parsing function.\n");
+	#endif
+
+	/* free_string_set(string_set); */ //TODO Fix this memory leak
+	/* free(string_set); */
 }
 
 /**
@@ -319,18 +338,14 @@ int main(int argc, char *argv[]) {
 	char *line;
 	char *first_word = NULL;
 	char c;
+	int line_ct = 0;
 
 	input_file = fopen(filename, "r");
 	output_file = fopen(strcat(filename, ".asm"), "w");
 
 	fprintf(output_file, "\tpushi main\n\tjpop\n");
 
-	int ct = 1;
-	while((line = read_next_line(input_file))) {
-		#ifdef DEBUG
-		printf("-----Parsing line %d-----\n", ct++);
-		#endif
-
+	while((line = read_next_line(input_file, &line_ct))) {
 		if(strlen(line) > 1) {
 			first_word = read_word(line);
 			printf("Read word %s.\n", first_word);
@@ -349,8 +364,12 @@ int main(int argc, char *argv[]) {
 				#endif
 
 				if(strlen(line) > 4) {
-					fprintf(output_file, "%s:\n", read_word(line + 4));
-					read_func(input_file, output_file, line, &block_ct, INT);
+					char *name = read_word(line + 4);
+					fprintf(output_file, "%s:\n", name);
+					if(strcmp(name, "main") == (long)name && strlen(name) == 4)
+						read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
+					else
+						read_func(input_file, output_file, line, &block_ct, INT, &line_ct);
 				}
 			} else if(strstr(first_word, "void") == first_word) { //Found a void function
 				#ifdef DEBUG
@@ -358,8 +377,12 @@ int main(int argc, char *argv[]) {
 				#endif
 
 				if(strlen(line) > 5) {
-					fprintf(output_file, "%s:\n", read_word(line + 5));
-					read_func(input_file, output_file, line, &block_ct, VOID);
+					char *name = read_word(line + 5);
+					fprintf(output_file, "%s:\n", name);
+					if(strcmp(name, "main") == (long)name && strlen(name) == 4)
+						read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
+					else
+						read_func(input_file, output_file, line, &block_ct, VOID, &line_ct);
 				}
 			}
 		} else {
@@ -369,5 +392,6 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	printf("Finished!\n");
     return 0;
 }

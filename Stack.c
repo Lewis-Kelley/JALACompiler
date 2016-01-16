@@ -31,7 +31,7 @@ char * stack_pop(Stack *stack) {
 
 	free(stack->names[stack->size]);
 
-	if(stack->size == 1)
+	if(stack->size == 0)
 		free(stack->names);
 	else
 		stack->names = (char **)realloc(stack->names, (stack->size) * sizeof(char *));
