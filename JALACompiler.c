@@ -44,7 +44,7 @@ typedef enum {
  * @return A string of the first word on the line.
  */
 char * read_word(char *line) {
-	char *cpy = (char *)malloc(100);
+	char *cpy = (char *)malloc(STR_LEN);
 	cpy[0] = '\0';
 
 	char *word = NULL;
@@ -92,9 +92,9 @@ char * read_next_line(FILE *file, int *line_ct) {
 	#endif
 
 	if(file != NULL) {
-		char *line = (char *)malloc(100);
+		char *line = (char *)malloc(STR_LEN);
 
-		if(fgets(line, 100, file) != NULL)
+		if(fgets(line, STR_LEN, file) != NULL)
 			return clean_str(line);
 	}
 
@@ -113,11 +113,11 @@ char * read_next_line(FILE *file, int *line_ct) {
  * @param line_ct The line number that is currently being parsed.
  * @return The last line read which includes the closing }.
  */
-char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list **string_set, Block_ct *block_ct, int *line_ct) {
+char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list *string_set, Block_ct *block_ct, int *line_ct) {
 	char *line = read_next_line(input_file, line_ct);
 	char *first_var = NULL;
 
-	String_list *local_vars = (String_list *)malloc(LIST_LEN * sizeof(String_list));
+	String_list local_vars[LIST_LEN];
 
 	while(strchr(line, '}') < 0 && strstr(line, "return") < 0) {
 		first_var = read_word(line);
@@ -263,7 +263,7 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, ch
  */
 void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *block_ct, Type ret_type, int *line_ct) {
 	Stack stack = {NULL, 0};
-	String_list *string_set = (String_list *)malloc(LIST_LEN * sizeof(String_list));
+	String_list string_set[LIST_LEN];
 	for(int i = 0; i < LIST_LEN; i++) { //Initialize each individual list in the string set
 		string_set[i].length = 0;
 	}
@@ -272,21 +272,21 @@ void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *bl
 	char *popped_var;
 
 	read_func_header(&stack, headline);
+	print_string_set(string_set);
 
 	// Make memory locations for the parameters
 	for(int i = 0; i < stack.size; i++) {
 		printf("i: %d\n", i);
-		string_set_add(&string_set, stack.names[i], MEM_STRT + 4 * i);
+		string_set_add(&(string_set[i]), stack.names[i], MEM_STRT + 4 * i);
 	}
-	printf("Hello\n");
 	print_string_set(string_set);
 
-	last_line = read_block(input_file, output_file, &stack, &string_set, block_ct, line_ct);
+	last_line = read_block(input_file, output_file, &stack, &string_set[0], block_ct, line_ct);
 
 	//Empty stack
 	while(stack.size > 0) {
 		popped_var = stack_pop(&stack);
-		fprintf(output_file, "pop %x\n", string_set_remove_str(&string_set, popped_var));
+		fprintf(output_file, "pop %x\n", string_set_remove_str(string_set, popped_var));
 	}
 
 	switch(ret_type) {
@@ -317,9 +317,6 @@ void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *bl
 	#ifdef DEBUG
 	printf("Finished parsing function.\n");
 	#endif
-
-	/* free_string_set(string_set); */ //TODO Fix this memory leak
-	/* free(string_set); */
 }
 
 /**
