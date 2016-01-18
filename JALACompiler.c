@@ -45,6 +45,7 @@ typedef enum {
 } Type;
 
 char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list string_set[], Block_ct *block_ct, int *line_ct, int top_addr);
+char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string_set[]);
 
 /**
  * Returns the first word in the line as a string.
@@ -150,25 +151,30 @@ char * read_next_line(FILE *input_file, FILE *output_file, int *line_ct) {
  * @param string_set The hashmap of all the variables and their memory locations.
  */
 void func_call(FILE *output_file, char *line, char *name, Stack *stack, String_list string_set[]) {
-	int base = 0;
 	char *call_line = strstr(line, name) + strlen(name) + 1; //The line starting after the name. Plus 1 for the parenthesis
-	char *par;
+	int var_ct = 0;
 
-	while(strchr(call_line + base, ',') != 0) {
-		par = read_word(call_line + base);
-		if(par[0] >= 48 && par[0] <= 57) { //Number, not variable
-			fprintf(output_file, "\tpushi %s\n", par);
-		} else { //Variable, not number
-			if(!(base == 0 && stack->size != 0 && strcmp(stack->names[stack->size - 1], par) == 0)) { //If the top of the stack already has the value, we can skip pushing it again.
-				fprintf(output_file, "\tpush %#x\n", string_set_contains(string_set, par));
-			}
+	for(int i = 0; i < LIST_LEN; i++) {
+		for(int j = 0; j < string_set[i].length; j++) {
+			stack_push(stack, string_set[i].keys[j]);
+			fprintf(output_file, "\tpush %#x\n", string_set[i].addrs[j]);
+			var_ct++;
 		}
-
-		base += strlen(par) + 1; //Plus 1 because of the comma
-		free(par);
 	}
+	fprintf(output_file, "\n");
 
-	fprintf(output_file, "\tpushi %s\n\tjpush\n", name);
+	while(strchr(call_line, ',') != 0) {
+		call_line = parse_exp(output_file, call_line, stack, string_set) + 1;
+	}
+	parse_exp(output_file, call_line, stack, string_set); //Once more for last parameter.
+
+	fprintf(output_file, "\tpushi %s\n\tjpush\n\n", name);
+	fprintf(output_file, "\tpop %#x\n", var_ct * 4 + MEM_STRT);
+	
+	for(int i = 0; i < var_ct; i++) {
+		fprintf(output_file, "\tpop %#x\n", string_set_contains(string_set, stack_pop(stack)));
+	}
+	fprintf(output_file, "\tpush %#x\n\n", var_ct * 4 + MEM_STRT);
 }
 
 /**
@@ -185,7 +191,7 @@ char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string
 	int base = 0;
 	char *word;
 
-	while(strlen(line + base) > 0 && line[base] != ';') {
+	while(strlen(line + base) > 0 && line[base] != ';' && line[base] != ',') {
 		while(line[base] == ' ')
 			base++;
 
@@ -245,7 +251,7 @@ char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string
 		}
 	}
 
-	return NULL;
+	return line + base;
 }
 
 /**
@@ -290,23 +296,6 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 			fprintf(output_file, "\tpop %#x\n", string_set_contains(string_set, first_word));
 		}
 
-		/* char *paren_ind = strchr(line, '('); */
-		/* if(paren_ind != 0 && ((paren_ind[-1] >= 48 && paren_ind[-1] <= 57) */
-		/* 					  || (paren_ind[-1] >= 65 && paren_ind[-1] <= 90) */
-		/* 					  || (paren_ind[-1] >= 97 && paren_ind[-1] <= 122))) { */
-		/* 	int index = -2; */
-		/* 	while(paren_ind != 0 && ((paren_ind[index] >= 48 && paren_ind[index] <= 57) */
-		/* 							 || (paren_ind[index] >= 65 && paren_ind[index] <= 90) */
-		/* 							 || (paren_ind[index] >= 97 && paren_ind[index] <= 122))) { */
-		/* 		index--; */
-		/* 	} */
-
-		/* 	if(strlen(paren_ind + index) == 0) */
-		/* 		index++; */
-
-		/* 	func_call(output_file, line, read_word(paren_ind + index), stack, string_set); */
-		/* } */
-
 		free(line);
 		free(first_word);
 		line = read_next_line(input_file, output_file, line_ct);
@@ -329,7 +318,7 @@ void read_func_header(Stack *stack, char *headline) {
 
 		stack_push(stack, read_word(parameter_line));
 	}
- 
+
 #ifdef DEBUG
 	print_stack(*stack);
 #endif
