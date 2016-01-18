@@ -50,6 +50,14 @@ There are some debug print statements that can be enabled at compile-time using 
     i = 3;
   }
   #+END_SRC
+- No function calls on their own. Since pointers don't work, nor do print statements, there is really no reason to call a void function nor to ignore the output of an integer function. Examples:
+  #+BEGIN_SRC c
+  //Invalid
+  func(a, b, c);
+
+  //Valid
+  int q = func(a, b, c);
+  #+END_SRC
 - Logical statements (&&, ||, !) might not work. I haven't chosen whether or not to do them. If I choose any one in particular to do, I'll probably do ||, since that is the one which would be hardest to do without.
 - The only legal variable type is =int=. The processor will only be able to handle these, so there really is no reason to allow any others.
   Functions can, however, return either =int= or =void=. Maybe =int*= will be implemented, but don't hold your breath.
@@ -62,4 +70,4 @@ There are some debug print statements that can be enabled at compile-time using 
   #+END_SRC
 - Preprocessor instructions (a.k.a. # instructions) will not be available. If there is time near the end, I may handle #define, #include "additionalFile.c", and #ifdef #endif in that order. There will be no including library files, since those are way too complicated.
 - Variable names have to be entirely alphanumeric, meaning no underscores or dashes. Just like standard C, they also cannot start with a number. I may expand this eventually, bt it's just easier this way.
-- Modulus is not a valid operand, since we really don't have a way to deal with that effectively in assembly.
+- Multiplication, division, and modulus are not valid operands, since we really don't have a way to deal with them effectively in assembly.

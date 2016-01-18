@@ -60,6 +60,7 @@ char * read_word(char *line) {
 	char *word = NULL;
 	int base = 0;
 	int cpy_len = strlen(line);
+	int paren_ct = 0;
 
 	strcpy(cpy, line);
 
@@ -77,19 +78,33 @@ char * read_word(char *line) {
 	}
 
 	if(cpy_len - base == 0) {
-		#ifdef DEBUG
+#ifdef DEBUG
 		printf("Found NULL word.\n");
-		#endif
+#endif
 
 		return NULL;
 	}
 
 	int index = 0;
 
-	word = (char *)malloc(cpy_len - strlen(strchr(cpy + base, '\0')) - index + 1);
+	word = (char *)malloc(cpy_len - strlen(strchr(cpy + base, '\0')) + 1);
 
 	while((cpy[base] >= 48 && cpy[base] <= 57) || (cpy[base] >= 65 && cpy[base] <= 90) || (cpy[base] >= 97 && cpy[base] <= 122)) {
 		word[index++] = cpy[base++];
+	}
+
+	if(cpy[base] == '(') {
+		paren_ct = 1;
+		while(paren_ct > 0) {
+			word[index++] = cpy[base];
+
+			if(cpy[base] == ')')
+				paren_ct--;
+			else if(cpy[base] == '(')
+				paren_ct++;
+
+			base++;
+		}
 	}
 
 	word[index] = '\0';
@@ -108,9 +123,9 @@ char * read_word(char *line) {
  * @return A string representation of the next line in the file.
  */
 char * read_next_line(FILE *input_file, FILE *output_file, int *line_ct) {
-	#ifdef DEBUG
+#ifdef DEBUG
 	printf("-----Parsing line %3d-----\n", ++(*line_ct));
-	#endif
+#endif
 
 	fprintf(output_file, "#Line: %d\n", *line_ct);
 
@@ -122,77 +137,6 @@ char * read_next_line(FILE *input_file, FILE *output_file, int *line_ct) {
 	}
 
 	return NULL;
-}
-
-/**
- * Parses a mathematical expression recursively and writes it to the output.
- *
- * @param output_file The assembly output file.
- * @param line The line starting at the beginning of the expression.
- * @param stack The current state of the stack in memory.
- * @param string_set The hashmap of where all variables are stored in memory.
- * @return The line starting at the end of the evaluated expression. Mostly used for recursion.
- */
-char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string_set[]) {
-	Operation next_op = NO_OP;
-	int base = 0;
-	char *word;
-
-	while(strlen(line + base) > 0 && line[base] != ';') {
-		while(line[base] == ' ')
-			base++;
-
-		if(line[base] == '(') { //Opens a new parse_exp instance to handle the inside of the expression.
-			printf("Recursive call of parse_exp\n");
-			base++;
-			line = parse_exp(output_file, line + base, stack, string_set);
-
-			switch(next_op) {
-			case NO_OP:
-				break;
-			case ADD:
-				fprintf(output_file, "\tadd\n");
-				next_op = NO_OP;
-				break;
-			case SUB:
-				fprintf(output_file, "\tsub\n");
-				next_op = NO_OP;
-				break;
-			}
-		} else if(line[base] == ')') { //Reached the end of this expression return.
-			return line + base + 1;
-		} else if(line[base] == '+') {
-			base++;
-			next_op = ADD;
-		} else if(line[base] == '-') {
-			base++;
-			next_op = SUB;
-		} else {
-			word = read_word(line + base);
-			base = (strstr(line, word) - line) + strlen(word); //Update the base
-
-			if(word[0] >= 48 && word[0] <= 57) { //Is a constant
-				fprintf(output_file, "\tpushi %s\n", word);
-			} else {
-				fprintf(output_file, "\tpush %#x\n", string_set_contains(string_set, word));
-			}
-
-			switch(next_op) {
-			case NO_OP:
-				break;
-			case ADD:
-				fprintf(output_file, "\tadd\n");
-				next_op = NO_OP;
-				break;
-			case SUB:
-				fprintf(output_file, "\tsub\n");
-				next_op = NO_OP;
-				break;
-			}
-
-			free(word);
-		}
-	}
 }
 
 /**
@@ -228,6 +172,83 @@ void func_call(FILE *output_file, char *line, char *name, Stack *stack, String_l
 }
 
 /**
+ * Parses a mathematical expression recursively and writes it to the output.
+ *
+ * @param output_file The assembly output file.
+ * @param line The line starting at the beginning of the expression.
+ * @param stack The current state of the stack in memory.
+ * @param string_set The hashmap of where all variables are stored in memory.
+ * @return The line starting at the end of the evaluated expression. Mostly used for recursion.
+ */
+char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string_set[]) {
+	Operation next_op = NO_OP;
+	int base = 0;
+	char *word;
+
+	while(strlen(line + base) > 0 && line[base] != ';') {
+		while(line[base] == ' ')
+			base++;
+
+		if(line[base] == '(') { //Opens a new parse_exp instance to handle the inside of the expression.
+			base++;
+			line = parse_exp(output_file, line + base, stack, string_set);
+
+			switch(next_op) {
+			case NO_OP:
+				break;
+			case ADD:
+				fprintf(output_file, "\tadd\n");
+				next_op = NO_OP;
+				break;
+			case SUB:
+				fprintf(output_file, "\tsub\n");
+				next_op = NO_OP;
+				break;
+			}
+		} else if(line[base] == ')') { //Reached the end of this expression return.
+			return line + base + 1;
+		} else if(line[base] == '+') {
+			base++;
+			next_op = ADD;
+		} else if(line[base] == '-') {
+			base++;
+			next_op = SUB;
+		} else {
+			word = read_word(line + base);
+			base = (strstr(line, word) - line) + strlen(word); //Update the base
+
+			if(strchr(word, '(') != 0) { //This is a function call.
+				word[strlen(word) - strlen(strchr(word, '('))] = '\0';
+				func_call(output_file, line, word, stack, string_set);
+			} else {
+				if(word[0] >= 48 && word[0] <= 57) { //Is a constant
+					fprintf(output_file, "\tpushi %s\n", word);
+				} else {
+					fprintf(output_file, "\tpush %#x\n", string_set_contains(string_set, word));
+				}
+
+				switch(next_op) {
+				case NO_OP:
+					break;
+				case ADD:
+					fprintf(output_file, "\tadd\n");
+					next_op = NO_OP;
+					break;
+				case SUB:
+					fprintf(output_file, "\tsub\n");
+					next_op = NO_OP;
+					break;
+				}
+			}
+
+			free(word);
+		}
+	}
+
+	return NULL;
+}
+
+/**
  * The main workhorse function that goes through a block, line by line, and returns when it hits
  * a closing }. This essentially writes straigh-line assembly code.
  *
@@ -256,9 +277,9 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 		if(strstr(first_word, "int") != 0) { // Is the line a variable definition?
 			first_word = read_word(line + 3);
 
-			#ifdef DEBUG
+#ifdef DEBUG
 			printf("Found declaration of variable %s.\n", first_word);
-			#endif
+#endif
 
 			top_addr += 4;
 			string_set_add(string_set, first_word, top_addr);
@@ -269,22 +290,22 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 			fprintf(output_file, "\tpop %#x\n", string_set_contains(string_set, first_word));
 		}
 
-		char *paren_ind = strchr(line, '(');
-		if(paren_ind != 0 && ((paren_ind[-1] >= 48 && paren_ind[-1] <= 57)
-							  || (paren_ind[-1] >= 65 && paren_ind[-1] <= 90)
-							  || (paren_ind[-1] >= 97 && paren_ind[-1] <= 122))) {
-			int index = -2;
-			while(paren_ind != 0 && ((paren_ind[index] >= 48 && paren_ind[index] <= 57)
-									 || (paren_ind[index] >= 65 && paren_ind[index] <= 90)
-									 || (paren_ind[index] >= 97 && paren_ind[index] <= 122))) {
-				index--;
-			}
+		/* char *paren_ind = strchr(line, '('); */
+		/* if(paren_ind != 0 && ((paren_ind[-1] >= 48 && paren_ind[-1] <= 57) */
+		/* 					  || (paren_ind[-1] >= 65 && paren_ind[-1] <= 90) */
+		/* 					  || (paren_ind[-1] >= 97 && paren_ind[-1] <= 122))) { */
+		/* 	int index = -2; */
+		/* 	while(paren_ind != 0 && ((paren_ind[index] >= 48 && paren_ind[index] <= 57) */
+		/* 							 || (paren_ind[index] >= 65 && paren_ind[index] <= 90) */
+		/* 							 || (paren_ind[index] >= 97 && paren_ind[index] <= 122))) { */
+		/* 		index--; */
+		/* 	} */
 
-			if(strlen(paren_ind + index) == 0)
-				index++;
+		/* 	if(strlen(paren_ind + index) == 0) */
+		/* 		index++; */
 
-			func_call(output_file, line, read_word(paren_ind + index), stack, string_set);
-		}
+		/* 	func_call(output_file, line, read_word(paren_ind + index), stack, string_set); */
+		/* } */
 
 		free(line);
 		free(first_word);
@@ -309,9 +330,9 @@ void read_func_header(Stack *stack, char *headline) {
 		stack_push(stack, read_word(parameter_line));
 	}
  
-	#ifdef DEBUG
+#ifdef DEBUG
 	print_stack(*stack);
-	#endif
+#endif
 }
 
 /**
@@ -470,9 +491,9 @@ void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *bl
 	if(ret_type != MAIN) //If main function, don't put the jr at the end
 		fprintf(output_file, "\tjr\n");
 
-	#ifdef DEBUG
+#ifdef DEBUG
 	printf("Finished parsing function.\n");
-	#endif
+#endif
 }
 
 /**
@@ -502,30 +523,30 @@ int main(int argc, char *argv[]) {
 			first_word = read_word(line);
 
 			if(first_word == NULL) { //Line is empty
-				#ifdef DEBUG
+#ifdef DEBUG
 				printf("Read empty line.\n");
-				#endif
+#endif
 
 				continue;
 			}
 
 			if(strstr(first_word, "int") == first_word) { //Found an int function
-				#ifdef DEBUG
-				printf("Found integer function %s.\n", read_word(line + 4));
-				#endif
+				char *name = read_word(line + 4);
+				name[strlen(name) - strlen(strchr(name, '('))] = '\0';
 
-				if(strlen(line) > 4) {
-					char *name = read_word(line + 4);
-					fprintf(output_file, "%s:\n", name);
-					if(strcmp(name, "main") == 0)
-						read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
-					else
-						read_func(input_file, output_file, line, &block_ct, INT, &line_ct);
-				}
+#ifdef DEBUG
+				printf("Found integer function %s.\n", name);
+#endif
+
+				fprintf(output_file, "%s:\n", name);
+				if(strcmp(name, "main") == 0)
+					read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
+				else
+					read_func(input_file, output_file, line, &block_ct, INT, &line_ct);
 			} else if(strstr(first_word, "void") == first_word) { //Found a void function
-				#ifdef DEBUG
+#ifdef DEBUG
 				printf("Found void function %s.\n", read_word(line + 5));
-				#endif
+#endif
 
 				if(strlen(line) > 5) {
 					char *name = read_word(line + 5);
@@ -537,9 +558,9 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		} else {
-            #ifdef DEBUG
+#ifdef DEBUG
 			printf("Read empty line.\n");
-            #endif
+#endif
 		}
 	}
 
