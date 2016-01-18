@@ -418,21 +418,25 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, ch
 void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *block_ct, Type ret_type, int *line_ct) {
 	Stack stack = {NULL, 0};
 	String_list string_set[LIST_LEN];
+	char *last_line;
+	char *popped_var;
+	int num_pars = 0;
+
 	for(int i = 0; i < LIST_LEN; i++) { //Initialize each individual list in the string set
 		string_set[i].length = 0;
 	}
 
-	char *last_line;
-	char *popped_var;
-
 	read_func_header(&stack, headline);
 
 	// Make memory locations for the parameters
-	for(int i = 0; i < stack.size; i++) {
+	for(int i = stack.size - 1; i >= 0; i--) {
+		num_pars++;
+		fprintf(output_file, "\tpop %#x\n", MEM_STRT + 4 * i);
 		string_set_add(string_set, stack.names[i], MEM_STRT + 4 * i);
+		stack_pop(&stack);
 	}
 
-	last_line = read_block(input_file, output_file, &stack, &string_set[0], block_ct, line_ct, MEM_STRT + (stack.size - 1) * 4);
+	last_line = read_block(input_file, output_file, &stack, &string_set[0], block_ct, line_ct, MEM_STRT + (num_pars - 1) * 4);
 
 	//Empty stack
 	while(stack.size > 0) {
@@ -452,7 +456,8 @@ void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *bl
 			}
 		}
 		break;
-	case INT: //TODO Incorporate return exp.
+	case INT:
+		parse_exp(output_file, last_line + 6, &stack, string_set);
 		free(last_line);
 		last_line = read_next_line(input_file, output_file, line_ct);
 		while(!strchr(last_line, '}')) {
@@ -512,7 +517,7 @@ int main(int argc, char *argv[]) {
 				if(strlen(line) > 4) {
 					char *name = read_word(line + 4);
 					fprintf(output_file, "%s:\n", name);
-					if(strcmp(name, "main") == (long)name && strlen(name) == 4)
+					if(strcmp(name, "main") == 0)
 						read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
 					else
 						read_func(input_file, output_file, line, &block_ct, INT, &line_ct);
@@ -525,7 +530,7 @@ int main(int argc, char *argv[]) {
 				if(strlen(line) > 5) {
 					char *name = read_word(line + 5);
 					fprintf(output_file, "%s:\n", name);
-					if(strcmp(name, "main") == (long)name && strlen(name) == 4)
+					if(strcmp(name, "main") == 0)
 						read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
 					else
 						read_func(input_file, output_file, line, &block_ct, VOID, &line_ct);
