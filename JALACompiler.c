@@ -139,9 +139,26 @@ char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string
 	char *word;
 
 	while(strlen(line + base) > 0 && line[base] != ';') {
-		if(line[base] == '(') { //Opens a new parse_exp instance to handle the inside of the expression.
-			line = parse_exp(output_file, line + base, stack, string_set);
+		while(line[base] == ' ')
 			base++;
+
+		if(line[base] == '(') { //Opens a new parse_exp instance to handle the inside of the expression.
+			printf("Recursive call of parse_exp\n");
+			base++;
+			line = parse_exp(output_file, line + base, stack, string_set);
+
+			switch(next_op) {
+			case NO_OP:
+				break;
+			case ADD:
+				fprintf(output_file, "\tadd\n");
+				next_op = NO_OP;
+				break;
+			case SUB:
+				fprintf(output_file, "\tsub\n");
+				next_op = NO_OP;
+				break;
+			}
 		} else if(line[base] == ')') { //Reached the end of this expression return.
 			return line + base + 1;
 		} else if(line[base] == '+') {
@@ -174,9 +191,6 @@ char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string
 			}
 
 			free(word);
-
-			while(line[base] == ' ')
-				base++;
 		}
 	}
 }
