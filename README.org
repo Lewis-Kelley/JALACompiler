@@ -61,3 +61,5 @@ There are some debug print statements that can be enabled at compile-time using 
   int add(int, int);
   #+END_SRC
 - Preprocessor instructions (a.k.a. # instructions) will not be available. If there is time near the end, I may handle #define, #include "additionalFile.c", and #ifdef #endif in that order. There will be no including library files, since those are way too complicated.
+- Variable names have to be entirely alphanumeric, meaning no underscores or dashes. Just like standard C, they also cannot start with a number. I may expand this eventually, bt it's just easier this way.
+- Modulus is not a valid operand, since we really don't have a way to deal with that effectively in assembly.

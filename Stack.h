@@ -12,6 +12,4 @@ typedef struct {
 
 void stack_push(Stack *stack, char *name);
 char * stack_pop(Stack *stack);
-char * stack_shallow_peek(Stack stack);
-char * stack_deep_peek(Stack stack);
 void print_stack(Stack stack);

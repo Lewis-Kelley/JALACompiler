@@ -28,15 +28,11 @@ int hash_func(char *str) {
  * @param addr The address where the variable named by str is stored.
  */
 void string_list_append(String_list *list, char str[], int addr) {
-	printf("Starting string_list_append.\n");
-	printf("list->length: %d\n", list->length);
-
 	list->keys[list->length][0] = '\0';
 
 	strcpy(list->keys[list->length], str);
 	list->addrs[list->length] = addr;
 	list->length++;
-	printf("Finishing string_list_append.\n");
 }
 
 /**
@@ -74,7 +70,7 @@ int string_list_remove_str(String_list *list, char str[]) {
  */
 int string_list_lookup(String_list list, char str[]) {
 	for(int i = 0; i < list.length; i++)
-		if(strcmp(list.keys[i], str))
+		if(strcmp(list.keys[i], str) == 0)
 			return list.addrs[i];
 
 	return 0;
@@ -88,10 +84,7 @@ int string_list_lookup(String_list list, char str[]) {
  * @param addr The address where the variable named by str is stored.
  */
 void string_set_add(String_list set[], char str[], int addr) {
-	int hash = hash_func(str);
-	printf("got hash: %d\n", hash);
 	string_list_append(&(set[hash_func(str)]), str, addr);
-	printf("list at index %d has length %d\n", hash, set[hash].length);
 }
 
 /**
@@ -102,6 +95,8 @@ void string_set_add(String_list set[], char str[], int addr) {
  * @return The memory address of str if the removal is successful, 0 otherwise.
  */
 int string_set_remove_str(String_list set[], char str[]) {
+	/* printf("Printing string list for hash %d\n", hash_func(str)); */
+	/* print_string_list(set[hash_func(str)]); */
 	return string_list_remove_str(&(set[hash_func(str)]), str);
 }
 
@@ -113,7 +108,7 @@ int string_set_remove_str(String_list set[], char str[]) {
  * @return The memory address of str if the string is contained in the set.
  */
 int string_set_contains(String_list *set, char str[]) {
-	return string_list_lookup(*(set + hash_func(str) * sizeof(String_list)), str);
+	return string_list_lookup(set[hash_func(str)], str);
 }
 
 /**
@@ -122,9 +117,13 @@ int string_set_contains(String_list *set, char str[]) {
  * @param list The string list to be printed.
  */
 void print_string_list(String_list list) {
-	for(int i = 0; i < list.length; i++) {
-		printf("\t---%d\n", i);
-		printf("\t%s:\n\t%#x\n", list.keys[i], list.addrs[i]);
+	if(list.length == 0) {
+		printf("EMPTY\n");
+	} else {
+		for(int i = 0; i < list.length; i++) {
+			printf("\t---%d\n", i);
+			printf("\t%s:\n\t%#x\n", list.keys[i], list.addrs[i]); //Note that code %#x prints in hex with a 0x prefix
+		}
 	}
 }
 
