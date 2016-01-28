@@ -46,6 +46,7 @@ typedef enum {
 
 char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list string_set[], Block_ct *block_ct, int *line_ct, int top_addr);
 char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string_set[]);
+char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr);
 
 /**
  * Returns the first word in the line as a string.
@@ -94,7 +95,9 @@ char * read_word(char *line) {
 		word[index++] = cpy[base++];
 	}
 
-	if(cpy[base] == '(') {
+	word[index] = '\0';
+
+	if(cpy[base] == '(' && strcmp(word, "if") != 0) {
 		paren_ct = 1;
 		while(paren_ct > 0) {
 			word[index++] = cpy[base];
@@ -151,13 +154,14 @@ char * read_next_line(FILE *input_file, FILE *output_file, int *line_ct) {
  * @param string_set The hashmap of all the variables and their memory locations.
  */
 void func_call(FILE *output_file, char *line, char *name, Stack *stack, String_list string_set[]) {
+	fprintf(output_file, "\t#Calling function %s\n", name);
 	char *call_line = strstr(line, name) + strlen(name) + 1; //The line starting after the name. Plus 1 for the parenthesis
 	int var_ct = 0;
 
 	for(int i = 0; i < LIST_LEN; i++) {
 		for(int j = 0; j < string_set[i].length; j++) {
 			stack_push(stack, string_set[i].keys[j]);
-			fprintf(output_file, "\tpush %#x\n", string_set[i].addrs[j]);
+			fprintf(output_file, "\tpushi %#x\n\tpush\n", string_set[i].addrs[j]);
 			var_ct++;
 		}
 	}
@@ -169,12 +173,12 @@ void func_call(FILE *output_file, char *line, char *name, Stack *stack, String_l
 	parse_exp(output_file, call_line, stack, string_set); //Once more for last parameter.
 
 	fprintf(output_file, "\tpushi %s\n\tjpush\n\n", name);
-	fprintf(output_file, "\tpop %#x\n", var_ct * 4 + MEM_STRT);
-	
+	fprintf(output_file, "\tpushi %#x\n\tpop\n", var_ct * 4 + MEM_STRT);
+
 	for(int i = 0; i < var_ct; i++) {
-		fprintf(output_file, "\tpop %#x\n", string_set_contains(string_set, stack_pop(stack)));
+		fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, stack_pop(stack)));
 	}
-	fprintf(output_file, "\tpush %#x\n\n", var_ct * 4 + MEM_STRT);
+	fprintf(output_file, "\tpushi %#x\n\tpush\n\n", var_ct * 4 + MEM_STRT);
 }
 
 /**
@@ -191,7 +195,7 @@ char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string
 	int base = 0;
 	char *word;
 
-	while(strlen(line + base) > 0 && line[base] != ';' && line[base] != ',') {
+	while(strlen(line + base) > 0 && line[base] != ';' && line[base] != ',' && line[base] != '=' && line[base] != '>' && line[base] != '<' && line[base] != '!') {
 		while(line[base] == ' ')
 			base++;
 
@@ -230,7 +234,7 @@ char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string
 				if(word[0] >= 48 && word[0] <= 57) { //Is a constant
 					fprintf(output_file, "\tpushi %s\n", word);
 				} else {
-					fprintf(output_file, "\tpush %#x\n", string_set_contains(string_set, word));
+					fprintf(output_file, "\tpushi %#x\n\tpush\n", string_set_contains(string_set, word));
 				}
 
 				switch(next_op) {
@@ -278,7 +282,14 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 			continue;
 		}
 
-		first_word = read_word(line);
+		first_word = read_word(line); //FIXME Seg fault here when parsing if statement.
+
+		if(strstr(first_word, "if") == first_word) { //Check for if statement
+#ifdef DEBUG
+			printf("Reading if statement. With word %s.\n", first_word);
+#endif
+			line = read_if_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr);
+		}
 
 		if(strstr(first_word, "int") != 0) { // Is the line a variable definition?
 			first_word = read_word(line + 3);
@@ -293,7 +304,7 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 
 		if(strchr(line, '=') != 0) { //There is a variable assignment.
 			parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
-			fprintf(output_file, "\tpop %#x\n", string_set_contains(string_set, first_word));
+			fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
 		}
 
 		free(line);
@@ -330,89 +341,73 @@ void read_func_header(Stack *stack, char *headline) {
  * @param input_file File that is being compiled.
  * @param output_file Assembly file that is being written.
  * @param block_ct Keeps track of the number of each type of block so as to give each unique names.
+ * @param string_set The hashmap containing the addresses of each variable in memory.
  * @param headline String representation of the header line of this if statement.
  * @param stack The current status of the stack at this point in the code.
  * @param line_ct The line number that is currently being parsed.
+ * @param top_addr The greatest address already used.
  * @return The last line read, that being the first line outside of the if statement.
  * This is necessary as it must check the next line for an else.
  */
-char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, char *headline, Stack *stack, int *line_ct) {
-	char *line = strchr(headline, '(') + 1;
-	char *first = read_word(headline);
-	int first_is_var = 0;
-	char *second = NULL;
-	int second_is_var = 0;
-	char op[3];
-	Comparison comp;
+char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr) {
+	String_list local_set[LIST_LEN]; //Holds any variable declarations inside the if block
+	string_set_cpy(local_set, string_set);
 
-	headline += strlen(first);
+	char *line = (char *)malloc(STR_LEN);
+	line[0] = '\0';
+	strcpy(line, headline);
 
-	while(headline[0] == ' ')
-		headline++;
+	//Find which comparison is being used
+	//Key: if(A [comp] B)
+	if(strstr(line, "==") != 0) { //A, B, bne
+		parse_exp(output_file, strchr(headline, '(') + 1, stack, string_set);
+		fprintf(output_file, "\tbne start_if_%d\n", block_ct->if_ct);
+	} else if(strstr(line, "!=") != 0) { //A, B, beq
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+		parse_exp(output_file, line + 2, stack, string_set);
 
-	op[0] = headline[0];
-	op[1] = headline[1];
-	op[2] = '\0';
+		fprintf(output_file, "\tbeq start_if_%d\n", block_ct->if_ct);
+	} else if(strstr(line, ">=") != 0) { //A, B, slt, 1, beq
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+		parse_exp(output_file, line + 2, stack, string_set);
 
-	headline += 2;
+		fprintf(output_file, "\tslt\n\tpushi 1\n");
+		fprintf(output_file, "\tbeq start_if_%d\n", block_ct->if_ct);
+	} else if(strstr(line, "<=") != 0) { //B, A, slt, 1, beq
+		parse_exp(output_file, line + 2, stack, string_set);
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
 
-	if(strcmp(op, "==") == 0)
-		comp = EQUAL;
-	else if(strcmp(op, "!=") == 0)
-		comp = NOT_EQUAL;
-	else if(strcmp(op, "<=") == 0)
-		comp = LESSER_EQ;
-	else if(strcmp(op, ">=") == 0)
-		comp = GREATER_EQ;
-	else if(op[0] == '>')
-		comp = GREATER;
-	else
-		comp = LESSER;
+		fprintf(output_file, "\tslt\n\tpushi 1\n");
+		fprintf(output_file, "\tbeq start_if_%d\n", block_ct->if_ct);
+	} else if(strchr(line, '>') != 0) { //B, A, slt, 1, bne
+		parse_exp(output_file, line + 1, stack, string_set);
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
 
-	while(headline[0] == ' ')
-		headline++;
+		fprintf(output_file, "\tslt\n\tpushi 1\n");
+		fprintf(output_file, "\tbne start_if_%d\n", block_ct->if_ct);
+	} else if(strchr(line, '<') != 0) { //A, B, slt, 1, bne
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+		parse_exp(output_file, line + 1, stack, string_set);
 
-	second = read_word(headline);
-	headline += strlen(second);
-
-	first_is_var = char_is_letter(first[0]);
-	second_is_var = char_is_letter(second[0]);
-
-	if(!first_is_var && !second_is_var) { //Constant expression
-		switch(comp) {
-		case EQUAL:
-			if(str_to_int(first) != str_to_int(second)) { //Check if the execution will ever be run
-				int open_ct = 1;
-				if(strchr(line, '{') < 0)
-					line = read_next_line(input_file, output_file, line_ct);
-
-				while(open_ct >= 0) { //Loop until finding the close of the if statement
-					if(strchr(line, '}') >= 0) {
-						open_ct--;
-						if(open_ct < 0)
-							break;
-					}
-
-					if(strchr(line, '{') >= 0) {
-						open_ct++;
-					}
-				}
-			}
-			break;
-		case NOT_EQUAL:
-			break;
-		case LESSER:
-			break;
-		case GREATER:
-			break;
-		case LESSER_EQ:
-			break;
-		case GREATER_EQ:
-			break;
-		}
+		fprintf(output_file, "\tslt\n\tpushi 1\n");
+		fprintf(output_file, "\tbne start_if_%d\n", block_ct->if_ct);
+	} else {
+		printf("ERROR: Unrecognized comparison in line %s\n", headline);
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
 	}
 
-	return NULL;
+	fprintf(output_file, "\n");
+	free(line);
+
+	line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
+
+	if(strstr(line, "else") == 0) { //No else on this line, check next line.
+		free(line);
+		line = read_next_line(input_file, output_file, line_ct);
+		if(strstr(line, "else") == 0) { //No paired else statement
+			fprintf(output_file, "\tend_if_%d\n", block_ct->if_ct++);
+		}
+	}
 }
 
 /**
@@ -441,7 +436,7 @@ void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *bl
 	// Make memory locations for the parameters
 	for(int i = stack.size - 1; i >= 0; i--) {
 		num_pars++;
-		fprintf(output_file, "\tpop %#x\n", MEM_STRT + 4 * i);
+		fprintf(output_file, "\tpushi %#x\n\tpop\n", MEM_STRT + 4 * i);
 		string_set_add(string_set, stack.names[i], MEM_STRT + 4 * i);
 		stack_pop(&stack);
 	}
@@ -451,7 +446,7 @@ void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *bl
 	//Empty stack
 	while(stack.size > 0) {
 		popped_var = stack_pop(&stack);
-		fprintf(output_file, "\tpop %#x\n", string_set_remove_str(string_set, popped_var));
+		fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_remove_str(string_set, popped_var));
 	}
 
 	switch(ret_type) {
@@ -527,7 +522,7 @@ int main(int argc, char *argv[]) {
 				printf("Found integer function %s.\n", name);
 #endif
 
-				fprintf(output_file, "%s:\n", name);
+				fprintf(output_file, "\n#################\n%s:\n#################\n", name);
 				if(strcmp(name, "main") == 0)
 					read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
 				else
@@ -539,7 +534,7 @@ int main(int argc, char *argv[]) {
 
 				if(strlen(line) > 5) {
 					char *name = read_word(line + 5);
-					fprintf(output_file, "%s:\n", name);
+					fprintf(output_file, "\n#################\n%s:\n#################\n", name);
 					if(strcmp(name, "main") == 0)
 						read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
 					else

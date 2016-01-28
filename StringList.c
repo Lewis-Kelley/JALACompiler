@@ -112,6 +112,22 @@ int string_set_contains(String_list *set, char str[]) {
 }
 
 /**
+ * Duplicates the orig string_set into the dest string_set.
+ *
+ * @param dest A String_list array to be copied into.
+ * @param orig The String_list array that is read from.
+ */
+void string_set_cpy(String_list dest[], String_list orig[]) {
+	for(int i = 0; i < LIST_LEN; i++) {
+		dest[i].length = orig[i].length;
+		for(int j = 0; j < orig[i].length; i++) {
+			dest[i].addrs[j] = orig[i].addrs[j];
+			strcpy(dest[i].keys[j], orig[i].keys[j]);
+		}
+	}
+}
+
+/**
  * Prints the passed string list. Only used for debugging.
  *
  * @param list The string list to be printed.

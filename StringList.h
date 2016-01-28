@@ -27,6 +27,7 @@ void string_set_clean(String_list *set[]);
 void string_set_add(String_list set[], char str[], int addr);
 int string_set_remove_str(String_list set[], char str[]);
 int string_set_contains(String_list set[], char str[]);
+void string_set_cpy(String_list dest[], String_list orig[]);
 
 void print_string_list(String_list list);
 void print_string_set(String_list set[]);
