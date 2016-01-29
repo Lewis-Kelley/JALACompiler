@@ -29,26 +29,36 @@ There are some debug print statements that can be enabled at compile-time using 
   }
   #+END_SRC c
 - You /must/ use curly braces for each code block. Even if the block only lasts for one line, you have to have the curly braces.
-  Also, don't put the =}= on the same line as an instruction. This probably means that else statements must be written a little odd. Check with me once I have it implemented. Examples:
+  Also, closing curly braces '}' must be either on their own line or before an else statement.
   #+BEGIN_SRC c
   //Valid
   if ( i ==0){
     i = 2;
-  }
-  else {
+  } else {
     i = 3;
   }
   
   //Invalid: Curly brace on line with instruction
   if ( i ==0){
     i = 2; }
-    
-  //Probably Invalid: else on same line as }
-  if ( i ==0){
-    i = 2;
-  } else {
-    i = 3;
-  }
+  #+END_SRC
+- if-else-if statements don't work. This may be ammended in the future. Please use nested if statements inside the else statement:
+  #+BEGIN_SRC c
+    //Valid
+    if(a == 1) {
+        a = 2;
+     } else {
+        if(a == 2) {
+            a = 3;
+        }
+     }
+
+    //Invalid
+    if(a == 1) {
+        a = 2;
+     } else if(a == 2) {
+        a = 3;
+     }
   #+END_SRC
 - No function calls on their own. Since pointers don't work, nor do print statements, there is really no reason to call a void function nor to ignore the output of an integer function. Examples:
   #+BEGIN_SRC c

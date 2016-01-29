@@ -47,6 +47,7 @@ typedef enum {
 char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list string_set[], Block_ct *block_ct, int *line_ct, int top_addr);
 char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string_set[]);
 char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr);
+void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr);
 
 /**
  * Returns the first word in the line as a string.
@@ -97,7 +98,7 @@ char * read_word(char *line) {
 
 	word[index] = '\0';
 
-	if(cpy[base] == '(' && strcmp(word, "if") != 0) {
+	if(cpy[base] == '(' && (strcmp(word, "if") != 0 || strcmp(word, "while") != 0)) {
 		paren_ct = 1;
 		while(paren_ct > 0) {
 			word[index++] = cpy[base];
@@ -291,6 +292,12 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 			line = read_if_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr);
 		}
 
+		/* if(strstr(first_word, "while") == first_word) { //Check for while loop */
+		/* 	printf("Reading while statement.\n"); */
+
+		/* 	read_while_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr); */
+		/* } */
+
 		if(strstr(first_word, "int") != 0) { // Is the line a variable definition?
 			first_word = read_word(line + 3);
 
@@ -334,6 +341,74 @@ void read_func_header(Stack *stack, char *headline) {
 #ifdef DEBUG
 	print_stack(*stack);
 #endif
+}
+
+/**
+ * Reads a while loop block and writes the needed assembly code to the file.
+ *
+ * @param input_file File that is being compiled.
+ * @param output_file Assembly file that is being written.
+ * @param block_ct Keeps track of the number of each type of block so as to give each unique names.
+ * @param string_set The hashmap containing the addresses of each variable in memory.
+ * @param headline String representation of the header line of this if statement.
+ * @param stack The current status of the stack at this point in the code.
+ * @param line_ct The line number that is currently being parsed.
+ * @param top_addr The greatest address already used.
+ */
+void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr) {
+	String_list local_set[LIST_LEN];
+	string_set_cpy(local_set, string_set);
+
+	char *line = (char *)malloc(STR_LEN);
+	line[0] = '\0';
+	strcpy(line, headline);
+
+	fprintf(output_file, "start_while_%d:\n", block_ct->while_ct);
+	//Find which comparison is being used
+	//Key: if(A [comp] B)
+	fprintf(output_file, "\t#%s\n", line);
+	if(strstr(line, "==") != 0) { //A, B, bne
+		parse_exp(output_file, strchr(headline, '(') + 1, stack, string_set);
+		fprintf(output_file, "\tbne end_while_%d\n", block_ct->while_ct);
+	} else if(strstr(line, "!=") != 0) { //A, B, beq
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+		parse_exp(output_file, line + 2, stack, string_set);
+
+		fprintf(output_file, "\tbeq end_while_%d\n", block_ct->while_ct);
+	} else if(strstr(line, ">=") != 0) { //A, B, slt, 1, beq
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+		parse_exp(output_file, line + 2, stack, string_set);
+
+		fprintf(output_file, "\tslt\n\tpushi 1\n");
+		fprintf(output_file, "\tbeq end_while_%d\n", block_ct->while_ct);
+	} else if(strstr(line, "<=") != 0) { //B, A, slt, 1, beq
+		parse_exp(output_file, line + 2, stack, string_set);
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+
+		fprintf(output_file, "\tslt\n\tpushi 1\n");
+		fprintf(output_file, "\tbeq end_while_%d\n", block_ct->while_ct);
+	} else if(strchr(line, '>') != 0) { //B, A, slt, 1, bne
+		parse_exp(output_file, line + 1, stack, string_set);
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+
+		fprintf(output_file, "\tslt\n\tpushi 1\n");
+		fprintf(output_file, "\tbne end_while_%d\n", block_ct->while_ct);
+	} else if(strchr(line, '<') != 0) { //A, B, slt, 1, bne
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+		parse_exp(output_file, line + 1, stack, string_set);
+
+		fprintf(output_file, "\tslt\n\tpushi 1\n");
+		fprintf(output_file, "\tbne end_while_%d\n", block_ct->while_ct);
+	} else {
+		printf("ERROR: Unrecognized comparison in line %s\n", headline);
+		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+	}
+
+	fprintf(output_file, "\n");
+	free(line);
+
+	free(read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr));
+	fprintf(output_file, "\tpushi start_while_%d\n\tjpop\n", block_ct->while_ct);
 }
 
 /**
@@ -408,7 +483,17 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 		line = read_next_line(input_file, output_file, line_ct);
 		if(strstr(line, "else") == 0) { //No paired else statement
 			fprintf(output_file, "end_if_%d:\n", block_ct->if_ct++);
+		} else { //There is an else statement
+			fprintf(output_file, "\tpushi end_else_%d\n\tjpop\nend_if_%d:\n", block_ct->if_ct, block_ct->if_ct);
+			free(line);
+			line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
+			fprintf(output_file, "end_else_%d:\n", block_ct->if_ct++);
 		}
+	} else { //There is an else statement
+		fprintf(output_file, "\tpushi end_else_%d\n\tjpop\nend_if_%d:\n", block_ct->if_ct, block_ct->if_ct);
+		free(line);
+		line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
+		fprintf(output_file, "end_else_%d:\n", block_ct->if_ct++);
 	}
 
 	return line;
