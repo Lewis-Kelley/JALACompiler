@@ -282,7 +282,7 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 			continue;
 		}
 
-		first_word = read_word(line); //FIXME Seg fault here when parsing if statement.
+		first_word = read_word(line);
 
 		if(strstr(first_word, "if") == first_word) { //Check for if statement
 #ifdef DEBUG
@@ -305,6 +305,7 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 		if(strchr(line, '=') != 0) { //There is a variable assignment.
 			parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 			fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
+			printf("Assigning variable %s.\n", first_word);
 		}
 
 		free(line);
@@ -359,38 +360,39 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 
 	//Find which comparison is being used
 	//Key: if(A [comp] B)
+	fprintf(output_file, "\t#%s\n", line);
 	if(strstr(line, "==") != 0) { //A, B, bne
 		parse_exp(output_file, strchr(headline, '(') + 1, stack, string_set);
-		fprintf(output_file, "\tbne start_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbne end_if_%d\n", block_ct->if_ct);
 	} else if(strstr(line, "!=") != 0) { //A, B, beq
 		parse_exp(output_file, strchr(headline, '('), stack, string_set);
 		parse_exp(output_file, line + 2, stack, string_set);
 
-		fprintf(output_file, "\tbeq start_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
 	} else if(strstr(line, ">=") != 0) { //A, B, slt, 1, beq
 		parse_exp(output_file, strchr(headline, '('), stack, string_set);
 		parse_exp(output_file, line + 2, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbeq start_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
 	} else if(strstr(line, "<=") != 0) { //B, A, slt, 1, beq
 		parse_exp(output_file, line + 2, stack, string_set);
 		parse_exp(output_file, strchr(headline, '('), stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbeq start_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
 	} else if(strchr(line, '>') != 0) { //B, A, slt, 1, bne
 		parse_exp(output_file, line + 1, stack, string_set);
 		parse_exp(output_file, strchr(headline, '('), stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbne start_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbne end_if_%d\n", block_ct->if_ct);
 	} else if(strchr(line, '<') != 0) { //A, B, slt, 1, bne
 		parse_exp(output_file, strchr(headline, '('), stack, string_set);
 		parse_exp(output_file, line + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbne start_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbne end_if_%d\n", block_ct->if_ct);
 	} else {
 		printf("ERROR: Unrecognized comparison in line %s\n", headline);
 		parse_exp(output_file, strchr(headline, '('), stack, string_set);
@@ -405,9 +407,11 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 		free(line);
 		line = read_next_line(input_file, output_file, line_ct);
 		if(strstr(line, "else") == 0) { //No paired else statement
-			fprintf(output_file, "\tend_if_%d\n", block_ct->if_ct++);
+			fprintf(output_file, "end_if_%d:\n", block_ct->if_ct++);
 		}
 	}
+
+	return line;
 }
 
 /**

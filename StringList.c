@@ -120,7 +120,7 @@ int string_set_contains(String_list *set, char str[]) {
 void string_set_cpy(String_list dest[], String_list orig[]) {
 	for(int i = 0; i < LIST_LEN; i++) {
 		dest[i].length = orig[i].length;
-		for(int j = 0; j < orig[i].length; i++) {
+		for(int j = 0; j < orig[i].length; j++) {
 			dest[i].addrs[j] = orig[i].addrs[j];
 			strcpy(dest[i].keys[j], orig[i].keys[j]);
 		}
