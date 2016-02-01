@@ -8,8 +8,9 @@ There are some debug print statements that can be enabled at compile-time using 
 * Instructions
   1. Write a C file that follows the known limitations (see below).
   2. Compile it using your favorite C compiler (mine is gcc) and debug it there. This program won't check for your mistakes.
-  3. In a shell, =cd= into this directory and type =make=.
-  4. =./JALACompiler <filename>= will run the program and output a new =<filename>.asm= file. Enjoy!
+  3. By default, this program will compile with debugging outputs off and clean (and difficult to read). If you want to change this, open the Makefile. On the CFLAGS line, add =-D DEBUG= to the line if you want debug output, and remove =-D CLEAN= if you want fancifully formatted output.
+  4. In a shell, =cd= into this directory and type =make=.
+  5. =./JALACompiler <filename>= will run the program and output a new =<filename>.asm= file. Enjoy!
 
 * Known Limitations
 - This program is *not* a syntax checker. This program *assumes* that the code you have provided can be compiled without errors using gcc or the like. If you pass it an invalid C file, the program may either crash or quietly generate a non-functioning assembly program. /Please/, compile with gcc before sending the file into this program.

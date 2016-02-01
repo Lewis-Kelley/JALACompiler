@@ -132,7 +132,9 @@ char * read_next_line(FILE *input_file, FILE *output_file, int *line_ct) {
 	printf("-----Parsing line %3d-----\n", ++(*line_ct));
 #endif
 
+#ifndef CLEAN
 	fprintf(output_file, "#Line: %d\n", *line_ct);
+#endif
 
 	if(input_file != NULL) {
 		char *line = (char *)malloc(STR_LEN);
@@ -155,7 +157,9 @@ char * read_next_line(FILE *input_file, FILE *output_file, int *line_ct) {
  * @param string_set The hashmap of all the variables and their memory locations.
  */
 void func_call(FILE *output_file, char *line, char *name, Stack *stack, String_list string_set[]) {
+#ifndef CLEAN
 	fprintf(output_file, "\t#Calling function %s\n", name);
+#endif
 	char *call_line = strstr(line, name) + strlen(name) + 1; //The line starting after the name. Plus 1 for the parenthesis
 	int var_ct = 0;
 
@@ -166,20 +170,28 @@ void func_call(FILE *output_file, char *line, char *name, Stack *stack, String_l
 			var_ct++;
 		}
 	}
+#ifndef CLEAN
 	fprintf(output_file, "\n");
+#endif
 
 	while(strchr(call_line, ',') != 0) {
 		call_line = parse_exp(output_file, call_line, stack, string_set) + 1;
 	}
 	parse_exp(output_file, call_line, stack, string_set); //Once more for last parameter.
 
-	fprintf(output_file, "\tpushi %s\n\tjpush\n\n", name);
+	fprintf(output_file, "\tpushi %s\n\tjpush\n", name);
+#ifndef CLEAN
+	fprintf(output_file, "\n");
+#endif
 	fprintf(output_file, "\tpushi %#x\n\tpop\n", var_ct * 4 + MEM_STRT);
 
 	for(int i = 0; i < var_ct; i++) {
 		fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, stack_pop(stack)));
 	}
-	fprintf(output_file, "\tpushi %#x\n\tpush\n\n", var_ct * 4 + MEM_STRT);
+	fprintf(output_file, "\tpushi %#x\n\tpush\n", var_ct * 4 + MEM_STRT);
+#ifndef CLEAN
+	fprintf(output_file, "\n");
+#endif
 }
 
 /**
@@ -294,10 +306,7 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 #endif
 			line = read_if_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr);
 		} else if(strstr(first_word, "while") == first_word) { //Check for while loop
-			printf("Reading while statement.\n");
-
 			read_while_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr);
-			printf("Finished reading while statement.\n");
 		} else {
 			if(strstr(first_word, "int") > 0) { // Is the line a variable definition?
 				first_word = read_word(line + 3);
@@ -369,7 +378,9 @@ void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, S
 	fprintf(output_file, "start_while_%d:\n", while_ct);
 	//Find which comparison is being used
 	//Key: if(A [comp] B)
+#ifndef CLEAN
 	fprintf(output_file, "\t#%s\n", line);
+#endif
 	if(strstr(line, "==") > 0) { //A, B, bne
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '=') + 2, stack, string_set);
@@ -409,7 +420,9 @@ void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, S
 		parse_exp(output_file, strchr(headline, '('), stack, string_set);
 	}
 
+#ifndef CLEAN
 	fprintf(output_file, "\n");
+#endif
 	free(line);
 
 	line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
@@ -452,7 +465,9 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 	line[0] = '\0';
 	strcpy(line, headline);
 
+#ifndef CLEAN
 	fprintf(output_file, "\t#%s\n", headline);
+#endif
 
 	//Find which comparison is being used
 	//Key: if(A [comp] B)
@@ -495,7 +510,9 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 		parse_exp(output_file, strchr(headline, '(') + 1, stack, string_set);
 	}
 
+#ifndef CLEAN
 	fprintf(output_file, "\n");
+#endif
 	free(line);
 
 	line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
@@ -645,7 +662,11 @@ int main(int argc, char *argv[]) {
 				printf("Found integer function %s.\n", name);
 #endif
 
+#ifndef CLEAN
 				fprintf(output_file, "\n#################\n%s:\n#################\n", name);
+#else
+				fprintf(output_file, "%s:\n", name);
+#endif
 				if(strcmp(name, "main") == 0)
 					read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
 				else
@@ -657,7 +678,11 @@ int main(int argc, char *argv[]) {
 
 				if(strlen(line) > 5) {
 					char *name = read_word(line + 5);
-					fprintf(output_file, "\n#################\n%s:\n#################\n", name);
+#ifndef CLEAN
+				fprintf(output_file, "\n#################\n%s:\n#################\n", name);
+#else
+				fprintf(output_file, "%s:\n", name);
+#endif
 					if(strcmp(name, "main") == 0)
 						read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
 					else
@@ -671,6 +696,5 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	printf("Finished!\n");
     return 0;
 }
