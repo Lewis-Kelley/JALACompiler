@@ -279,7 +279,7 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 	char *line = read_next_line(input_file, output_file, line_ct);
 	char *first_word = NULL;
 
-	while(strchr(line, '}') == 0 && strstr(line, "return") == 0) {
+	while(strchr(line, '}') <= 0 && strstr(line, "return") <= 0) {
 		if(strlen(line) == 0) { //Check if line is empty
 			free(line);
 			line = read_next_line(input_file, output_file, line_ct);
@@ -294,7 +294,7 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 #endif
 			line = read_if_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr);
 		} else if(strstr(first_word, "while") == first_word) { //Check for while loop
-			printf("Reading while statement.\n", line);
+			printf("Reading while statement.\n");
 
 			read_while_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr);
 			printf("Finished reading while statement.\n");
@@ -360,11 +360,13 @@ void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, S
 	String_list local_set[LIST_LEN];
 	string_set_cpy(local_set, string_set);
 
+	int while_ct = block_ct->while_ct++;
+
 	char *line = (char *)malloc(STR_LEN);
 	line[0] = '\0';
 	strcpy(line, headline);
 
-	fprintf(output_file, "start_while_%d:\n", block_ct->while_ct);
+	fprintf(output_file, "start_while_%d:\n", while_ct);
 	//Find which comparison is being used
 	//Key: if(A [comp] B)
 	fprintf(output_file, "\t#%s\n", line);
@@ -372,36 +374,36 @@ void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, S
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '=') + 2, stack, string_set);
 
-		fprintf(output_file, "\tbne end_while_%d\n", block_ct->while_ct);
+		fprintf(output_file, "\tbne end_while_%d\n", while_ct);
 	} else if(strstr(line, "!=") > 0) { //A, B, beq
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 
-		fprintf(output_file, "\tbeq end_while_%d\n", block_ct->while_ct);
+		fprintf(output_file, "\tbeq end_while_%d\n", while_ct);
 	} else if(strstr(line, ">=") > 0) { //A, B, slt, 1, beq
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbeq end_while_%d\n", block_ct->while_ct);
+		fprintf(output_file, "\tbeq end_while_%d\n", while_ct);
 	} else if(strstr(line, "<=") > 0) { //B, A, slt, 1, beq
 		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbeq end_while_%d\n", block_ct->while_ct);
+		fprintf(output_file, "\tbeq end_while_%d\n", while_ct);
 	} else if(strchr(line, '>') > 0) { //B, A, slt, 1, bne
 		parse_exp(output_file, strchr(line, '>') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '('), stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbne end_while_%d\n", block_ct->while_ct);
+		fprintf(output_file, "\tbne end_while_%d\n", while_ct);
 	} else if(strchr(line, '<') > 0) { //A, B, slt, 1, bne
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '<') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbne end_while_%d\n", block_ct->while_ct);
+		fprintf(output_file, "\tbne end_while_%d\n", while_ct);
 	} else {
 		printf("ERROR: Unrecognized comparison in line %s\n", headline);
 		parse_exp(output_file, strchr(headline, '('), stack, string_set);
@@ -410,8 +412,20 @@ void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, S
 	fprintf(output_file, "\n");
 	free(line);
 
-	free(read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr));
-	fprintf(output_file, "\tpushi start_while_%d\n\tjpop\n", block_ct->while_ct);
+	line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
+
+	if(strstr(line, "return") == line) { //there was a return statement ending this block
+		parse_exp(output_file, line + 6, stack, string_set);
+		while(!strchr(line, '}')) {
+			free(line);
+			line = read_next_line(input_file, output_file, line_ct);
+		}
+
+		fprintf(output_file, "\tjr\n");
+	}
+
+	free(line);
+	fprintf(output_file, "\tpushi start_while_%d\n\tjpop\nend_while_%d:\n", while_ct, while_ct);
 }
 
 /**
@@ -432,6 +446,8 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 	String_list local_set[LIST_LEN]; //Holds any variable declarations inside the if block
 	string_set_cpy(local_set, string_set);
 
+	int if_ct = block_ct->if_ct++;
+
 	char *line = (char *)malloc(STR_LEN);
 	line[0] = '\0';
 	strcpy(line, headline);
@@ -444,36 +460,36 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '=') + 2, stack, string_set);
 
-		fprintf(output_file, "\tbne end_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbne end_if_%d\n", if_ct);
 	} else if(strstr(line, "!=") > 0) { //A, B, beq
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 
-		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbeq end_if_%d\n", if_ct);
 	} else if(strstr(line, ">=") > 0) { //A, B, slt, 1, beq
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbeq end_if_%d\n", if_ct);
 	} else if(strstr(line, "<=") > 0) { //B, A, slt, 1, beq
 		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbeq end_if_%d\n", if_ct);
 	} else if(strchr(line, '>') > 0) { //B, A, slt, 1, bne
 		parse_exp(output_file, strchr(line, '>') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbne end_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbne end_if_%d\n", if_ct);
 	} else if(strchr(line, '<') > 0) { //A, B, slt, 1, bne
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '<') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbne end_if_%d\n", block_ct->if_ct);
+		fprintf(output_file, "\tbne end_if_%d\n", if_ct);
 	} else {
 		printf("ERROR: Unrecognized comparison in line %s\n", headline);
 		parse_exp(output_file, strchr(headline, '(') + 1, stack, string_set);
@@ -484,22 +500,32 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 
 	line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
 
+	if(strstr(line, "return") == line) { //there was a return statement ending this block
+		parse_exp(output_file, line + 6, stack, string_set);
+		while(!strchr(line, '}')) {
+			free(line);
+			line = read_next_line(input_file, output_file, line_ct);
+		}
+
+		fprintf(output_file, "\tjr\n");
+	}
+
 	if(strstr(line, "else") == 0) { //No else on this line, check next line.
 		free(line);
 		line = read_next_line(input_file, output_file, line_ct);
 		if(strstr(line, "else") == 0) { //No paired else statement
-			fprintf(output_file, "end_if_%d:\n", block_ct->if_ct++);
+			fprintf(output_file, "end_if_%d:\n", if_ct);
 		} else { //There is an else statement
-			fprintf(output_file, "\tpushi end_else_%d\n\tjpop\nend_if_%d:\n", block_ct->if_ct, block_ct->if_ct);
+			fprintf(output_file, "\tpushi end_else_%d\n\tjpop\nend_if_%d:\n", if_ct, if_ct);
 			free(line);
 			line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
-			fprintf(output_file, "end_else_%d:\n", block_ct->if_ct++);
+			fprintf(output_file, "end_else_%d:\n", if_ct);
 		}
 	} else { //There is an else statement
-		fprintf(output_file, "\tpushi end_else_%d\n\tjpop\nend_if_%d:\n", block_ct->if_ct, block_ct->if_ct);
+		fprintf(output_file, "\tpushi end_else_%d\n\tjpop\nend_if_%d:\n", if_ct, if_ct);
 		free(line);
 		line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
-		fprintf(output_file, "end_else_%d:\n", block_ct->if_ct++);
+		fprintf(output_file, "end_else_%d:\n", if_ct);
 	}
 
 	return line;
