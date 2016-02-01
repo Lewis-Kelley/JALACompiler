@@ -3,7 +3,7 @@ This is a compiler made for the Computer Architecture I CPU project. The intenti
 
 This program takes an input of a c file on the command line (doesn't necessarily need the .c suffix) and will output a new file appending .asm to the input file's name.
 
-There are some debug print statements that can be enabled at compile-time using a -D DEBUG tag when using gcc. Note that this is the default in the Makefile. Once the project nears completion, I will remove the tag from the file.
+There are some debug print statements that can be enabled at compile-time using a =-D DEBUG= tag when using gcc. Note that by default this is turned off. There is also a compile option =-D CLEAN= to format the assembly code in a less pretty, if easier to parse, fashion. Note that this is turned on by default.
 
 * Instructions
   1. Write a C file that follows the known limitations (see below).
@@ -14,6 +14,7 @@ There are some debug print statements that can be enabled at compile-time using 
 
 * Known Limitations
 - This program is *not* a syntax checker. This program *assumes* that the code you have provided can be compiled without errors using gcc or the like. If you pass it an invalid C file, the program may either crash or quietly generate a non-functioning assembly program. /Please/, compile with gcc before sending the file into this program.
+- No ++, +=, or -= operations yet. It shouldn't take long to implement, but they aren't ready yet.
 - Each expression must be on its own line. You are not allowed, for instance, to do something like this:
   #+BEGIN_SRC c
   //ERROR: Only one instruction is allowed per line.
@@ -22,11 +23,11 @@ There are some debug print statements that can be enabled at compile-time using 
 - Each block header (if, function, for loop, etc.) must also be on their own line. Examples:
   #+BEGIN_SRC c
   //ERROR: Can't put an instruction on the same line as a block header.
-  if(i == 0) { i++; }
+  if(i == 0) { i= 2; }
   
   //OK
   if(i == 0) {
-    i++;
+    i = 2;
   }
   #+END_SRC c
 - You /must/ use curly braces for each code block. Even if the block only lasts for one line, you have to have the curly braces.
@@ -80,5 +81,5 @@ There are some debug print statements that can be enabled at compile-time using 
   int add(int, int);
   #+END_SRC
 - Preprocessor instructions (a.k.a. # instructions) will not be available. If there is time near the end, I may handle #define, #include "additionalFile.c", and #ifdef #endif in that order. There will be no including library files, since those are way too complicated.
-- Variable names have to be entirely alphanumeric, meaning no underscores or dashes. Just like standard C, they also cannot start with a number. I may expand this eventually, bt it's just easier this way.
+- Variable names have to be entirely alphanumeric, meaning no underscores or dashes. Just like standard C, they also cannot start with a number. I may expand this eventually, but it's just easier this way.
 - Multiplication, division, and modulus are not valid operands, since we really don't have a way to deal with them effectively in assembly.
