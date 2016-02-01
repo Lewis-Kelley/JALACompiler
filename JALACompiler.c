@@ -98,7 +98,7 @@ char * read_word(char *line) {
 
 	word[index] = '\0';
 
-	if(cpy[base] == '(' && (strcmp(word, "if") != 0 || strcmp(word, "while") != 0)) {
+	if(cpy[base] == '(' && strstr(word, "if") <= 0 && strstr(word, "while") <= 0 && strstr(word, "for") <= 0) {
 		paren_ct = 1;
 		while(paren_ct > 0) {
 			word[index++] = cpy[base];
@@ -216,7 +216,10 @@ char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string
 				next_op = NO_OP;
 				break;
 			}
-		} else if(line[base] == ')') { //Reached the end of this expression return.
+		} else if(line[base] == ')' || line[base] == '<' ||  line[base] == '>' ||  line[base] == '=' ||  line[base] == '!') { //Reached the end of this expression return.
+			if(line[base + 1] == '=')
+				return line + base + 2;
+
 			return line + base + 1;
 		} else if(line[base] == '+') {
 			base++;
@@ -312,7 +315,6 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 		if(strchr(line, '=') != 0) { //There is a variable assignment.
 			parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 			fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
-			printf("Assigning variable %s.\n", first_word);
 		}
 
 		free(line);
@@ -435,42 +437,43 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 
 	//Find which comparison is being used
 	//Key: if(A [comp] B)
-	fprintf(output_file, "\t#%s\n", line);
 	if(strstr(line, "==") != 0) { //A, B, bne
-		parse_exp(output_file, strchr(headline, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 2, stack, string_set);
+
 		fprintf(output_file, "\tbne end_if_%d\n", block_ct->if_ct);
 	} else if(strstr(line, "!=") != 0) { //A, B, beq
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
-		parse_exp(output_file, line + 2, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 
 		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
 	} else if(strstr(line, ">=") != 0) { //A, B, slt, 1, beq
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
-		parse_exp(output_file, line + 2, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
 	} else if(strstr(line, "<=") != 0) { //B, A, slt, 1, beq
-		parse_exp(output_file, line + 2, stack, string_set);
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
 	} else if(strchr(line, '>') != 0) { //B, A, slt, 1, bne
-		parse_exp(output_file, line + 1, stack, string_set);
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+		parse_exp(output_file, strchr(line, '>') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '('), stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbne end_if_%d\n", block_ct->if_ct);
 	} else if(strchr(line, '<') != 0) { //A, B, slt, 1, bne
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
-		parse_exp(output_file, line + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '<') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbne end_if_%d\n", block_ct->if_ct);
 	} else {
 		printf("ERROR: Unrecognized comparison in line %s\n", headline);
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+		parse_exp(output_file, strchr(headline, '(') + 1, stack, string_set);
 	}
 
 	fprintf(output_file, "\n");
