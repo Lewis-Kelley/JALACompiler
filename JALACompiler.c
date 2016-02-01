@@ -99,8 +99,8 @@ char * read_word(char *line) {
 	word[index] = '\0';
 
 	if(cpy[base] == '(' && strstr(word, "if") <= 0 && strstr(word, "while") <= 0 && strstr(word, "for") <= 0) {
-		paren_ct = 1;
-		while(paren_ct > 0) {
+		paren_ct = 0;
+		do {
 			word[index++] = cpy[base];
 
 			if(cpy[base] == ')')
@@ -109,7 +109,7 @@ char * read_word(char *line) {
 				paren_ct++;
 
 			base++;
-		}
+		} while(paren_ct > 0);
 	}
 
 	word[index] = '\0';
@@ -293,28 +293,27 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 			printf("Reading if statement. With word %s.\n", first_word);
 #endif
 			line = read_if_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr);
-		}
+		} else if(strstr(first_word, "while") == first_word) { //Check for while loop
+			printf("Reading while statement.\n", line);
 
-		/* if(strstr(first_word, "while") == first_word) { //Check for while loop */
-		/* 	printf("Reading while statement.\n"); */
-
-		/* 	read_while_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr); */
-		/* } */
-
-		if(strstr(first_word, "int") != 0) { // Is the line a variable definition?
-			first_word = read_word(line + 3);
+			read_while_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr);
+			printf("Finished reading while statement.\n");
+		} else {
+			if(strstr(first_word, "int") > 0) { // Is the line a variable definition?
+				first_word = read_word(line + 3);
 
 #ifdef DEBUG
-			printf("Found declaration of variable %s.\n", first_word);
+				printf("Found declaration of variable %s.\n", first_word);
 #endif
 
-			top_addr += 4;
-			string_set_add(string_set, first_word, top_addr);
-		}
+				top_addr += 4;
+				string_set_add(string_set, first_word, top_addr);
+			}
 
-		if(strchr(line, '=') != 0) { //There is a variable assignment.
-			parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
-			fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
+			if(strchr(line, '=') > 0) { //There is a variable assignment.
+				parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
+				fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
+			}
 		}
 
 		free(line);
@@ -369,35 +368,37 @@ void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, S
 	//Find which comparison is being used
 	//Key: if(A [comp] B)
 	fprintf(output_file, "\t#%s\n", line);
-	if(strstr(line, "==") != 0) { //A, B, bne
-		parse_exp(output_file, strchr(headline, '(') + 1, stack, string_set);
+	if(strstr(line, "==") > 0) { //A, B, bne
+		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 2, stack, string_set);
+
 		fprintf(output_file, "\tbne end_while_%d\n", block_ct->while_ct);
-	} else if(strstr(line, "!=") != 0) { //A, B, beq
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
-		parse_exp(output_file, line + 2, stack, string_set);
+	} else if(strstr(line, "!=") > 0) { //A, B, beq
+		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 
 		fprintf(output_file, "\tbeq end_while_%d\n", block_ct->while_ct);
-	} else if(strstr(line, ">=") != 0) { //A, B, slt, 1, beq
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
-		parse_exp(output_file, line + 2, stack, string_set);
-
-		fprintf(output_file, "\tslt\n\tpushi 1\n");
-		fprintf(output_file, "\tbeq end_while_%d\n", block_ct->while_ct);
-	} else if(strstr(line, "<=") != 0) { //B, A, slt, 1, beq
-		parse_exp(output_file, line + 2, stack, string_set);
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+	} else if(strstr(line, ">=") > 0) { //A, B, slt, 1, beq
+		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbeq end_while_%d\n", block_ct->while_ct);
-	} else if(strchr(line, '>') != 0) { //B, A, slt, 1, bne
-		parse_exp(output_file, line + 1, stack, string_set);
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+	} else if(strstr(line, "<=") > 0) { //B, A, slt, 1, beq
+		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+
+		fprintf(output_file, "\tslt\n\tpushi 1\n");
+		fprintf(output_file, "\tbeq end_while_%d\n", block_ct->while_ct);
+	} else if(strchr(line, '>') > 0) { //B, A, slt, 1, bne
+		parse_exp(output_file, strchr(line, '>') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '('), stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbne end_while_%d\n", block_ct->while_ct);
-	} else if(strchr(line, '<') != 0) { //A, B, slt, 1, bne
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
-		parse_exp(output_file, line + 1, stack, string_set);
+	} else if(strchr(line, '<') > 0) { //A, B, slt, 1, bne
+		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '<') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbne end_while_%d\n", block_ct->while_ct);
@@ -435,37 +436,39 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 	line[0] = '\0';
 	strcpy(line, headline);
 
+	fprintf(output_file, "\t#%s\n", headline);
+
 	//Find which comparison is being used
 	//Key: if(A [comp] B)
-	if(strstr(line, "==") != 0) { //A, B, bne
+	if(strstr(line, "==") > 0) { //A, B, bne
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '=') + 2, stack, string_set);
 
 		fprintf(output_file, "\tbne end_if_%d\n", block_ct->if_ct);
-	} else if(strstr(line, "!=") != 0) { //A, B, beq
+	} else if(strstr(line, "!=") > 0) { //A, B, beq
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 
 		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
-	} else if(strstr(line, ">=") != 0) { //A, B, slt, 1, beq
+	} else if(strstr(line, ">=") > 0) { //A, B, slt, 1, beq
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
-	} else if(strstr(line, "<=") != 0) { //B, A, slt, 1, beq
+	} else if(strstr(line, "<=") > 0) { //B, A, slt, 1, beq
 		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbeq end_if_%d\n", block_ct->if_ct);
-	} else if(strchr(line, '>') != 0) { //B, A, slt, 1, bne
+	} else if(strchr(line, '>') > 0) { //B, A, slt, 1, bne
 		parse_exp(output_file, strchr(line, '>') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '('), stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbne end_if_%d\n", block_ct->if_ct);
-	} else if(strchr(line, '<') != 0) { //A, B, slt, 1, bne
+	} else if(strchr(line, '<') > 0) { //A, B, slt, 1, bne
 		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
 		parse_exp(output_file, strchr(line, '<') + 1, stack, string_set);
 
@@ -524,6 +527,8 @@ void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *bl
 	}
 
 	read_func_header(&stack, headline);
+	if(strchr(headline, '{') <= 0) //Check if there is no opening curly brace on the headline
+		read_next_line(input_file, output_file, line_ct);
 
 	// Make memory locations for the parameters
 	for(int i = stack.size - 1; i >= 0; i--) {
