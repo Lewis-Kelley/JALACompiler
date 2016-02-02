@@ -8,6 +8,7 @@
 #include "StringList.h"
 
 #define MEM_STRT 0x1000 //Where the memory block starts
+#define VAR_SIZE 1 //The size of the variables in memory
 
 /** @struct Block_ct
  * Holds the current count of each type of block that needs a jump tag
@@ -183,12 +184,12 @@ void func_call(FILE *output_file, char *line, char *name, Stack *stack, String_l
 #ifndef CLEAN
 	fprintf(output_file, "\n");
 #endif
-	fprintf(output_file, "\tpushi %#x\n\tpop\n", var_ct * 4 + MEM_STRT);
+	fprintf(output_file, "\tpushi %#x\n\tpop\n", var_ct * VAR_SIZE + MEM_STRT);
 
 	for(int i = 0; i < var_ct; i++) {
 		fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, stack_pop(stack)));
 	}
-	fprintf(output_file, "\tpushi %#x\n\tpush\n", var_ct * 4 + MEM_STRT);
+	fprintf(output_file, "\tpushi %#x\n\tpush\n", var_ct * VAR_SIZE + MEM_STRT);
 #ifndef CLEAN
 	fprintf(output_file, "\n");
 #endif
@@ -315,13 +316,25 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 				printf("Found declaration of variable %s.\n", first_word);
 #endif
 
-				top_addr += 4;
+				top_addr += VAR_SIZE;
 				string_set_add(string_set, first_word, top_addr);
 			}
 
 			if(strchr(line, '=') > 0) { //There is a variable assignment.
-				parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
-				fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
+				if((strchr(line, '=') - 1)[0] == '+') { //+= operator
+					fprintf(output_file, "\tpushi %#x\n", string_set_contains(string_set, first_word));
+					parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
+					fprintf(output_file, "\tadd\n\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
+				} else if((strchr(line, '=') - 1)[0] == '-') { //-= operator
+					fprintf(output_file, "\tpushi %#x\n", string_set_contains(string_set, first_word));
+					parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
+					fprintf(output_file, "\tsub\n\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
+				} else {
+					parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
+					fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
+				}
+			} else {
+				parse_exp(output_file, line, stack, string_set);
 			}
 		}
 
@@ -576,12 +589,12 @@ void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *bl
 	// Make memory locations for the parameters
 	for(int i = stack.size - 1; i >= 0; i--) {
 		num_pars++;
-		fprintf(output_file, "\tpushi %#x\n\tpop\n", MEM_STRT + 4 * i);
-		string_set_add(string_set, stack.names[i], MEM_STRT + 4 * i);
+		fprintf(output_file, "\tpushi %#x\n\tpop\n", MEM_STRT + VAR_SIZE * i);
+		string_set_add(string_set, stack.names[i], MEM_STRT + VAR_SIZE * i);
 		stack_pop(&stack);
 	}
 
-	last_line = read_block(input_file, output_file, &stack, &string_set[0], block_ct, line_ct, MEM_STRT + (num_pars - 1) * 4);
+	last_line = read_block(input_file, output_file, &stack, &string_set[0], block_ct, line_ct, MEM_STRT + (num_pars - 1) * VAR_SIZE);
 
 	//Empty stack
 	while(stack.size > 0) {
