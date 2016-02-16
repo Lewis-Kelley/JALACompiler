@@ -7,16 +7,12 @@
 #include "StringOps.h"
 #include "StringList.h"
 
-#define MEM_STRT 20480 //Where the memory block starts
-#define VAR_SIZE 1 //The size of the variables in memory
-
 /** @struct Block_ct
  * Holds the current count of each type of block that needs a jump tag
  * so that each can be unique.
  * Also contains a pointer to the last used cell in memory, so that anything above it will be free.
  */
 typedef struct {
-	int mem_addr; ///< Topmost accessed memory address.
 	int if_ct; ///< Number of tags used in if statements.
 	int for_ct; ///< Number of tags used in for loops.
 	int while_ct; ///< Number of tags used in while loops.
@@ -45,10 +41,10 @@ typedef enum {
 	VOID, INT, MAIN
 } Type;
 
-char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list string_set[], Block_ct *block_ct, int *line_ct, int top_addr, char *curr_func);
+char * read_block(FILE *input_file, FILE *output_file, FILE *final_file, Stack *stack, String_list string_set[], Block_ct *block_ct, int *line_ct, char *curr_func);
 char * parse_exp(FILE *output_file, char *line, char *curr_func, Stack *stack, String_list string_set[]);
-char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr, char *curr_func);
-void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr, char *curr_func);
+char * read_if_block(FILE *input_file, FILE *output_file, FILE *final_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, char *curr_func);
+void read_while_block(FILE *input_file, FILE *output_file, FILE *final_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, char *curr_func);
 
 /**
  * Returns the first word in the line as a string.
@@ -284,15 +280,15 @@ char * parse_exp(FILE *output_file, char *line, char *curr_func, Stack *stack, S
  *
  * @param input_file File that is being compiled.
  * @param output_file Assembly file that is being written.
+ * @param final_file The final rendition of the output file.
  * @param block_ct Keeps track of the number of each type of block so as to give each unique names.
  * @param stack The current status of the stack at this point in the code.
  * @param string_set Hashmap linking variables to memory addresses.
  * @param line_ct The line number that is currently being parsed.
- * @param top_addr The greatest address already used.
  * @param curr_func The name of the function currently being parsed.
  * @return The last line read which includes the closing }.
  */
-char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list string_set[], Block_ct *block_ct, int *line_ct, int top_addr, char *curr_func) {
+char * read_block(FILE *input_file, FILE *output_file, FILE *final_file, Stack *stack, String_list string_set[], Block_ct *block_ct, int *line_ct, char *curr_func) {
 	char *line = read_next_line(input_file, output_file, line_ct);
 	char *first_word = NULL;
 
@@ -309,9 +305,9 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 #ifdef DEBUG
 			printf("Reading if statement. With word %s.\n", first_word);
 #endif
-			line = read_if_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr, curr_func);
+			line = read_if_block(input_file, output_file, final_file, block_ct, string_set, line, stack, line_ct, curr_func);
 		} else if(strstr(first_word, "while") == first_word) { //Check for while loop
-			read_while_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr, curr_func);
+			read_while_block(input_file, output_file, final_file, block_ct, string_set, line, stack, line_ct, curr_func);
 		} else {
 			if(strstr(first_word, "int") > 0) { // Is the line a variable definition?
 				first_word = read_word(line + 3);
@@ -319,6 +315,8 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 #ifdef DEBUG
 				printf("Found declaration of variable %s_%s.\n", curr_func, first_word);
 #endif
+
+                fprintf(final_file, "\t.globl %s_%s\n", curr_func, first_word);
 			}
 
 			if(strchr(line, '=') > 0) { //There is a variable assignment.
@@ -378,15 +376,15 @@ void read_func_header(Stack *stack, char *headline, char *curr_func) {
  *
  * @param input_file File that is being compiled.
  * @param output_file Assembly file that is being written.
+ * @param final_file Final output file
  * @param block_ct Keeps track of the number of each type of block so as to give each unique names.
  * @param string_set The hashmap containing the addresses of each variable in memory.
  * @param headline String representation of the header line of this if statement.
  * @param stack The current status of the stack at this point in the code.
  * @param line_ct The line number that is currently being parsed.
- * @param top_addr The greatest address already used.
  * @param curr_func The name of the function currently being parsed.
  */
-void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr, char *curr_func) {
+void read_while_block(FILE *input_file, FILE *output_file, FILE *final_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, char *curr_func) {
 	String_list local_set[LIST_LEN];
 	string_set_cpy(local_set, string_set);
 
@@ -446,7 +444,7 @@ void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, S
 #endif
 	free(line);
 
-	line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr, curr_func);
+	line = read_block(input_file, output_file, final_file, stack, local_set, block_ct, line_ct, curr_func);
 
 	if(strstr(line, "return") == line) { //there was a return statement ending this block
 		parse_exp(output_file, line + 6, curr_func, stack, string_set);
@@ -467,17 +465,17 @@ void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, S
  *
  * @param input_file File that is being compiled.
  * @param output_file Assembly file that is being written.
+ * @param final_file Final output file.
  * @param block_ct Keeps track of the number of each type of block so as to give each unique names.
  * @param string_set The hashmap containing the addresses of each variable in memory.
  * @param headline String representation of the header line of this if statement.
  * @param stack The current status of the stack at this point in the code.
  * @param line_ct The line number that is currently being parsed.
- * @param top_addr The greatest address already used.
  * @param curr_func The name of the function currently being parsed.
  * @return The last line read, that being the first line outside of the if statement.
  * This is necessary as it must check the next line for an else.
  */
-char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr, char *curr_func) {
+char * read_if_block(FILE *input_file, FILE *output_file, FILE *final_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, char *curr_func) {
 	String_list local_set[LIST_LEN]; //Holds any variable declarations inside the if block
 	string_set_cpy(local_set, string_set);
 
@@ -537,7 +535,7 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 #endif
 	free(line);
 
-	line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr, curr_func);
+	line = read_block(input_file, output_file, final_file, stack, local_set, block_ct, line_ct, curr_func);
 
 	if(strstr(line, "return") == line) { //there was a return statement ending this block
 		parse_exp(output_file, line + 6, curr_func, stack, string_set);
@@ -557,13 +555,13 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 		} else { //There is an else statement
 			fprintf(output_file, "\tpushi end_else_%d\n\tjpop\nend_if_%d:\n", if_ct, if_ct);
 			free(line);
-			line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr, curr_func);
+			line = read_block(input_file, output_file, final_file, stack, local_set, block_ct, line_ct, curr_func);
 			fprintf(output_file, "end_else_%d:\n", if_ct);
 		}
 	} else { //There is an else statement
 		fprintf(output_file, "\tpushi end_else_%d\n\tjpop\nend_if_%d:\n", if_ct, if_ct);
 		free(line);
-		line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr, curr_func);
+		line = read_block(input_file, output_file, final_file, stack, local_set, block_ct, line_ct, curr_func);
 		fprintf(output_file, "end_else_%d:\n", if_ct);
 	}
 
@@ -575,13 +573,14 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
  *
  * @param input_file File that is being compiled.
  * @param output_file Assembly file that is being written.
+ * @param final_file The final output file.
  * @param headline String representation of the header line of this function.
  * @param block_ct Keeps track of the number of each type of block so as to give each unique names.
  * @param line_ct The line number that is currently being parsed.
  * @param ret_type The type of function this is.
  * @param curr_func The name of the function currently being parsed.
  */
-void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *block_ct, Type ret_type, int *line_ct, char *curr_func) {
+void read_func(FILE *input_file, FILE *output_file, FILE *final_file, char *headline, Block_ct *block_ct, Type ret_type, int *line_ct, char *curr_func) {
 	Stack stack = {NULL, 0};
 	String_list string_set[LIST_LEN];
 	char *last_line;
@@ -598,10 +597,11 @@ void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *bl
 	// Make memory locations for the parameters
 	for(int i = stack.size - 1; i >= 0; i--) {
 		num_pars++;
+        fprintf(final_file, "\t.globl %s\n", stack.names[i]);
 		fprintf(output_file, "\tpushi %s\n\tpop\n", stack_pop(&stack));
 	}
 
-	last_line = read_block(input_file, output_file, &stack, &string_set[0], block_ct, line_ct, MEM_STRT + (num_pars - 1) * VAR_SIZE, curr_func);
+	last_line = read_block(input_file, output_file, final_file, &stack, &string_set[0], block_ct, line_ct, curr_func);
 
 	//Empty stack
 	while(stack.size > 0) {
@@ -650,16 +650,27 @@ int main(int argc, char *argv[]) {
 
 	FILE *input_file;
 	FILE *output_file;
-	Block_ct block_ct = {MEM_STRT, 0, 0, 0};
+    FILE *final_file;
+	Block_ct block_ct = {0, 0, 0};
 	char *filename = argv[1];
+    char *final_filename = (char *)malloc(STR_LEN);
 	char *line;
 	char *first_word = NULL;
 	int line_ct = 0;
 
+    strcpy(final_filename, filename);
+
 	input_file = fopen(filename, "r");
-	output_file = fopen(strcat(filename, ".asm"), "w");
+
+	output_file = fopen(strcat(final_filename, ".tmp"), "w");
+    strcpy(final_filename, filename);
+
+    final_file = fopen(strcat(final_filename, ".asm"), "w");
+    strcpy(final_filename, filename);
 
 	fprintf(output_file, "\tpushi main\n\tjpop\n");
+
+    fprintf(final_file, "\t.globl res\n");
 
 	while((line = read_next_line(input_file, output_file, &line_ct))) {
 		if(strlen(line) > 1) {
@@ -673,6 +684,7 @@ int main(int argc, char *argv[]) {
 				continue;
 			}
 
+
 			if(strstr(first_word, "int") == first_word) { //Found an int function
 				char *name = read_word(line + 4);
 				name[strlen(name) - strlen(strchr(name, '('))] = '\0';
@@ -683,13 +695,14 @@ int main(int argc, char *argv[]) {
 
 #ifndef CLEAN
 				fprintf(output_file, "\n#################\n%s:\n#################\n", name);
+                printf("WHY?\n");
 #else
 				fprintf(output_file, "%s:\n", name);
 #endif
 				if(strcmp(name, "main") == 0)
-					read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct, name);
+					read_func(input_file, output_file, final_file, line, &block_ct, MAIN, &line_ct, name);
 				else
-					read_func(input_file, output_file, line, &block_ct, INT, &line_ct, name);
+					read_func(input_file, output_file, final_file, line, &block_ct, INT, &line_ct, name);
 			} else if(strstr(first_word, "void") == first_word) { //Found a void function
 #ifdef DEBUG
 				printf("Found void function %s.\n", read_word(line + 5));
@@ -698,14 +711,14 @@ int main(int argc, char *argv[]) {
 				if(strlen(line) > 5) {
 					char *name = read_word(line + 5);
 #ifndef CLEAN
-				fprintf(output_file, "\n#################\n%s:\n#################\n", name);
+                    fprintf(output_file, "\n#################\n%s:\n#################\n", name);
 #else
-				fprintf(output_file, "%s:\n", name);
+                    fprintf(output_file, "%s:\n", name);
 #endif
 					if(strcmp(name, "main") == 0)
-						read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct, name);
+						read_func(input_file, output_file, final_file, line, &block_ct, MAIN, &line_ct, name);
 					else
-						read_func(input_file, output_file, line, &block_ct, VOID, &line_ct, name);
+						read_func(input_file, output_file, final_file, line, &block_ct, VOID, &line_ct, name);
 				}
 			}
 		} else {
@@ -715,5 +728,26 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+#ifndef CLEAN
+    fprintf(final_file, "\n");
+#endif
+
+    fclose(output_file);
+    output_file = fopen(strcat(final_filename, ".tmp"), "r");
+
+    line = (char *)malloc(STR_LEN * sizeof(char));
+
+    while(final_file != NULL && fgets(line, STR_LEN, output_file) != NULL) {
+        fputs(line, final_file);
+    }
+
+    free(line);
+
+    fclose(input_file);
+    fclose(output_file);
+    fclose(final_file);
+
+    remove(strcat(filename, ".tmp"));
+    
     return 0;
 }
