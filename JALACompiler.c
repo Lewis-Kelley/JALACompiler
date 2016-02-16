@@ -695,7 +695,6 @@ int main(int argc, char *argv[]) {
 
 #ifndef CLEAN
 				fprintf(output_file, "\n#################\n%s:\n#################\n", name);
-                printf("WHY?\n");
 #else
 				fprintf(output_file, "%s:\n", name);
 #endif

@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -D CLEAN -std=gnu11 -g
+CFLAGS = -D DEBUG -std=gnu11 -g
 
 PROG = JALACompiler
 SRCS = JALACompiler.c Stack.c StringOps.c StringList.c

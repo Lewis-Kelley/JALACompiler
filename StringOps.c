@@ -69,6 +69,16 @@ int str_to_int(char *str) {
 char * clean_str(char *str) {
 	int base = 0;
 	int len = strlen(str);
+
+    if(len == 1) {
+        if(str[0] == ' ' || str[0] == '\t' || str[0] == '\n' || str[0] == '\r') {
+            str = (char *)realloc(str, 1);
+            str[0] = '\0';
+        }
+
+        return str;
+    }
+    
 	int top;
 
 	if(strstr(str, "//")) {
@@ -84,7 +94,7 @@ char * clean_str(char *str) {
 	while(base < len - 1 && (str[base] == ' ' || str[base] == '\t' || str[base] == '\n' || str[base] == '\r'))
 		base++;
 
-	while(top > base && (str[top - 1] == ' ' || str[top - 1] == '\t' || str[top - 1] == '\n' || str[base] == '\r'))
+	while(top > base && (str[top - 1] == ' ' || str[top - 1] == '\t' || str[top - 1] == '\n' || str[top - 1] == '\r'))
 		top--;
 
 	for(int i = 0; i < len - base - 1; i++)
