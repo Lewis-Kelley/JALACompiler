@@ -81,10 +81,10 @@ char * clean_str(char *str) {
 
 	top = len - 1;
 
-	while(base < len - 1 && (str[base] == ' ' || str[base] == '\t' || str[base] == '\n'))
+	while(base < len - 1 && (str[base] == ' ' || str[base] == '\t' || str[base] == '\n' || str[base] == '\r'))
 		base++;
 
-	while(top > base && (str[top - 1] == ' ' || str[top - 1] == '\t' || str[top - 1] == '\n'))
+	while(top > base && (str[top - 1] == ' ' || str[top - 1] == '\t' || str[top - 1] == '\n' || str[base] == '\r'))
 		top--;
 
 	for(int i = 0; i < len - base - 1; i++)

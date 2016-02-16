@@ -742,6 +742,7 @@ int main(int argc, char *argv[]) {
     }
 
     free(line);
+    fputs("\tbeq -1", final_file);
 
     fclose(input_file);
     fclose(output_file);
