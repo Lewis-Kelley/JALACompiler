@@ -14,7 +14,7 @@ There are some debug print statements that can be enabled at compile-time using 
 
 * Known Limitations
 - This program is *not* a syntax checker. This program *assumes* that the code you have provided can be compiled without errors using gcc or the like. If you pass it an invalid C file, the program may either crash or quietly generate a non-functioning assembly program. /Please/, compile with gcc before sending the file into this program.
-- No ++, +=, or -= operations yet. It shouldn't take long to implement, but they aren't ready yet.
+- No ++ or -- operators. Sorry, but the weird things you can do with those make it too weird to justify implementing
 - Each expression must be on its own line. You are not allowed, for instance, to do something like this:
   #+BEGIN_SRC c
   //ERROR: Only one instruction is allowed per line.

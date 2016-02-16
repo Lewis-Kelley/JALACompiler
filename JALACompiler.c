@@ -7,7 +7,7 @@
 #include "StringOps.h"
 #include "StringList.h"
 
-#define MEM_STRT 0x1000 //Where the memory block starts
+#define MEM_STRT 20480 //Where the memory block starts
 #define VAR_SIZE 1 //The size of the variables in memory
 
 /** @struct Block_ct
@@ -45,10 +45,10 @@ typedef enum {
 	VOID, INT, MAIN
 } Type;
 
-char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list string_set[], Block_ct *block_ct, int *line_ct, int top_addr);
-char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string_set[]);
-char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr);
-void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr);
+char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list string_set[], Block_ct *block_ct, int *line_ct, int top_addr, char *curr_func);
+char * parse_exp(FILE *output_file, char *line, char *curr_func, Stack *stack, String_list string_set[]);
+char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr, char *curr_func);
+void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr, char *curr_func);
 
 /**
  * Returns the first word in the line as a string.
@@ -129,8 +129,9 @@ char * read_word(char *line) {
  * @return A string representation of the next line in the file.
  */
 char * read_next_line(FILE *input_file, FILE *output_file, int *line_ct) {
+    ++(*line_ct);
 #ifdef DEBUG
-	printf("-----Parsing line %3d-----\n", ++(*line_ct));
+	printf("-----Parsing line %3d-----\n", *line_ct);
 #endif
 
 #ifndef CLEAN
@@ -154,10 +155,11 @@ char * read_next_line(FILE *input_file, FILE *output_file, int *line_ct) {
  * @param output_file The assembly file that is being written to.
  * @param line The line where the function is being called.
  * @param name The name of the function.
+ * @param curr_func The name of the function currently being parsed.
  * @param stack The current state of the stack.
  * @param string_set The hashmap of all the variables and their memory locations.
  */
-void func_call(FILE *output_file, char *line, char *name, Stack *stack, String_list string_set[]) {
+void func_call(FILE *output_file, char *line, char *name, char *curr_func, Stack *stack, String_list string_set[]) {
 #ifndef CLEAN
 	fprintf(output_file, "\t#Calling function %s\n", name);
 #endif
@@ -167,7 +169,7 @@ void func_call(FILE *output_file, char *line, char *name, Stack *stack, String_l
 	for(int i = 0; i < LIST_LEN; i++) {
 		for(int j = 0; j < string_set[i].length; j++) {
 			stack_push(stack, string_set[i].keys[j]);
-			fprintf(output_file, "\tpushi %#x\n\tpush\n", string_set[i].addrs[j]);
+			fprintf(output_file, "\tpushi %s\n\tpush\n", string_set[i].keys[j]);
 			var_ct++;
 		}
 	}
@@ -176,20 +178,20 @@ void func_call(FILE *output_file, char *line, char *name, Stack *stack, String_l
 #endif
 
 	while(strchr(call_line, ',') != 0) {
-		call_line = parse_exp(output_file, call_line, stack, string_set) + 1;
+		call_line = parse_exp(output_file, call_line, curr_func, stack, string_set) + 1;
 	}
-	parse_exp(output_file, call_line, stack, string_set); //Once more for last parameter.
+	parse_exp(output_file, call_line, curr_func, stack, string_set); //Once more for last parameter.
 
 	fprintf(output_file, "\tpushi %s\n\tjpush\n", name);
 #ifndef CLEAN
 	fprintf(output_file, "\n");
 #endif
-	fprintf(output_file, "\tpushi %#x\n\tpop\n", var_ct * VAR_SIZE + MEM_STRT);
+	fprintf(output_file, "\tpushi res\n\tpop\n");
 
 	for(int i = 0; i < var_ct; i++) {
-		fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, stack_pop(stack)));
+		fprintf(output_file, "\tpushi %s\n\tpop\n", stack_pop(stack));
 	}
-	fprintf(output_file, "\tpushi %#x\n\tpush\n", var_ct * VAR_SIZE + MEM_STRT);
+	fprintf(output_file, "\tpushi res\n\tpush\n");
 #ifndef CLEAN
 	fprintf(output_file, "\n");
 #endif
@@ -200,11 +202,12 @@ void func_call(FILE *output_file, char *line, char *name, Stack *stack, String_l
  *
  * @param output_file The assembly output file.
  * @param line The line starting at the beginning of the expression.
+ * @param curr_func The name of the function currently being parsed.
  * @param stack The current state of the stack in memory.
  * @param string_set The hashmap of where all variables are stored in memory.
  * @return The line starting at the end of the evaluated expression. Mostly used for recursion.
  */
-char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string_set[]) {
+char * parse_exp(FILE *output_file, char *line, char *curr_func, Stack *stack, String_list string_set[]) {
 	Operation next_op = NO_OP;
 	int base = 0;
 	char *word;
@@ -215,7 +218,7 @@ char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string
 
 		if(line[base] == '(') { //Opens a new parse_exp instance to handle the inside of the expression.
 			base++;
-			line = parse_exp(output_file, line + base, stack, string_set);
+			line = parse_exp(output_file, line + base, curr_func, stack, string_set);
 
 			switch(next_op) {
 			case NO_OP:
@@ -246,12 +249,12 @@ char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string
 
 			if(strchr(word, '(') != 0) { //This is a function call.
 				word[strlen(word) - strlen(strchr(word, '('))] = '\0';
-				func_call(output_file, line, word, stack, string_set);
+				func_call(output_file, line, word, curr_func, stack, string_set);
 			} else {
 				if(word[0] >= 48 && word[0] <= 57) { //Is a constant
 					fprintf(output_file, "\tpushi %s\n", word);
-				} else {
-					fprintf(output_file, "\tpushi %#x\n\tpush\n", string_set_contains(string_set, word));
+				} else { //Variable
+					fprintf(output_file, "\tpushi %s_%s\n\tpush\n", curr_func, word);
 				}
 
 				switch(next_op) {
@@ -286,9 +289,10 @@ char * parse_exp(FILE *output_file, char *line, Stack *stack, String_list string
  * @param string_set Hashmap linking variables to memory addresses.
  * @param line_ct The line number that is currently being parsed.
  * @param top_addr The greatest address already used.
+ * @param curr_func The name of the function currently being parsed.
  * @return The last line read which includes the closing }.
  */
-char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list string_set[], Block_ct *block_ct, int *line_ct, int top_addr) {
+char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list string_set[], Block_ct *block_ct, int *line_ct, int top_addr, char *curr_func) {
 	char *line = read_next_line(input_file, output_file, line_ct);
 	char *first_word = NULL;
 
@@ -305,36 +309,33 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
 #ifdef DEBUG
 			printf("Reading if statement. With word %s.\n", first_word);
 #endif
-			line = read_if_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr);
+			line = read_if_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr, curr_func);
 		} else if(strstr(first_word, "while") == first_word) { //Check for while loop
-			read_while_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr);
+			read_while_block(input_file, output_file, block_ct, string_set, line, stack, line_ct, top_addr, curr_func);
 		} else {
 			if(strstr(first_word, "int") > 0) { // Is the line a variable definition?
 				first_word = read_word(line + 3);
 
 #ifdef DEBUG
-				printf("Found declaration of variable %s.\n", first_word);
+				printf("Found declaration of variable %s_%s.\n", curr_func, first_word);
 #endif
-
-				top_addr += VAR_SIZE;
-				string_set_add(string_set, first_word, top_addr);
 			}
 
 			if(strchr(line, '=') > 0) { //There is a variable assignment.
 				if((strchr(line, '=') - 1)[0] == '+') { //+= operator
-					fprintf(output_file, "\tpushi %#x\n", string_set_contains(string_set, first_word));
-					parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
-					fprintf(output_file, "\tadd\n\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
+					fprintf(output_file, "\tpushi %s_%s\n", curr_func, first_word);
+					parse_exp(output_file, strchr(line, '=') + 1, curr_func, stack, string_set);
+					fprintf(output_file, "\tadd\n\tpushi %s_%s\n\tpop\n", curr_func, first_word);
 				} else if((strchr(line, '=') - 1)[0] == '-') { //-= operator
-					fprintf(output_file, "\tpushi %#x\n", string_set_contains(string_set, first_word));
-					parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
-					fprintf(output_file, "\tsub\n\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
+					fprintf(output_file, "\tpushi %s_%s\n", curr_func, first_word);
+					parse_exp(output_file, strchr(line, '=') + 1, curr_func, stack, string_set);
+					fprintf(output_file, "\tsub\n\tpushi %s_%s\n\tpop\n", curr_func, first_word);
 				} else {
-					parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
-					fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_contains(string_set, first_word));
+					parse_exp(output_file, strchr(line, '=') + 1, curr_func, stack, string_set);
+					fprintf(output_file, "\tpushi %s_%s\n\tpop\n", curr_func, first_word);
 				}
 			} else {
-				parse_exp(output_file, line, stack, string_set);
+				parse_exp(output_file, line, curr_func, stack, string_set);
 			}
 		}
 
@@ -351,14 +352,20 @@ char * read_block(FILE *input_file, FILE *output_file, Stack *stack, String_list
  *
  * @param stack The current status of the memory stack.
  * @param headline The header line for the function.
+ * @param curr_func The name of the current function being parsed.
  */
-void read_func_header(Stack *stack, char *headline) {
+void read_func_header(Stack *stack, char *headline, char *curr_func) {
 	char *parameter_line = strchr(headline, '(') + 1; // The header line starting with the (
+    char *var = (char *)malloc(STR_LEN * sizeof(char));
 
 	while((parameter_line = strstr(parameter_line, "int "))) {
 		parameter_line += 4;
 
-		stack_push(stack, read_word(parameter_line));
+        strcpy(var, curr_func);
+        strcat(var, "_");
+        strcat(var, read_word(parameter_line));
+
+		stack_push(stack, var);
 	}
 
 #ifdef DEBUG
@@ -377,8 +384,9 @@ void read_func_header(Stack *stack, char *headline) {
  * @param stack The current status of the stack at this point in the code.
  * @param line_ct The line number that is currently being parsed.
  * @param top_addr The greatest address already used.
+ * @param curr_func The name of the function currently being parsed.
  */
-void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr) {
+void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr, char *curr_func) {
 	String_list local_set[LIST_LEN];
 	string_set_cpy(local_set, string_set);
 
@@ -395,42 +403,42 @@ void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, S
 	fprintf(output_file, "\t#%s\n", line);
 #endif
 	if(strstr(line, "==") > 0) { //A, B, bne
-		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '=') + 2, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 2, curr_func, stack, string_set);
 
 		fprintf(output_file, "\tbne end_while_%d\n", while_ct);
 	} else if(strstr(line, "!=") > 0) { //A, B, beq
-		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 1, curr_func, stack, string_set);
 
 		fprintf(output_file, "\tbeq end_while_%d\n", while_ct);
 	} else if(strstr(line, ">=") > 0) { //A, B, slt, 1, beq
-		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 1, curr_func, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbeq end_while_%d\n", while_ct);
 	} else if(strstr(line, "<=") > 0) { //B, A, slt, 1, beq
-		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, curr_func, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbeq end_while_%d\n", while_ct);
 	} else if(strchr(line, '>') > 0) { //B, A, slt, 1, bne
-		parse_exp(output_file, strchr(line, '>') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '('), stack, string_set);
+		parse_exp(output_file, strchr(line, '>') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '('), curr_func, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbne end_while_%d\n", while_ct);
 	} else if(strchr(line, '<') > 0) { //A, B, slt, 1, bne
-		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '<') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '<') + 1, curr_func, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbne end_while_%d\n", while_ct);
 	} else {
 		printf("ERROR: Unrecognized comparison in line %s\n", headline);
-		parse_exp(output_file, strchr(headline, '('), stack, string_set);
+		parse_exp(output_file, strchr(headline, '('), curr_func, stack, string_set);
 	}
 
 #ifndef CLEAN
@@ -438,10 +446,10 @@ void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, S
 #endif
 	free(line);
 
-	line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
+	line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr, curr_func);
 
 	if(strstr(line, "return") == line) { //there was a return statement ending this block
-		parse_exp(output_file, line + 6, stack, string_set);
+		parse_exp(output_file, line + 6, curr_func, stack, string_set);
 		while(!strchr(line, '}')) {
 			free(line);
 			line = read_next_line(input_file, output_file, line_ct);
@@ -465,10 +473,11 @@ void read_while_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, S
  * @param stack The current status of the stack at this point in the code.
  * @param line_ct The line number that is currently being parsed.
  * @param top_addr The greatest address already used.
+ * @param curr_func The name of the function currently being parsed.
  * @return The last line read, that being the first line outside of the if statement.
  * This is necessary as it must check the next line for an else.
  */
-char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr) {
+char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, String_list string_set[], char *headline, Stack *stack, int *line_ct, int top_addr, char *curr_func) {
 	String_list local_set[LIST_LEN]; //Holds any variable declarations inside the if block
 	string_set_cpy(local_set, string_set);
 
@@ -485,42 +494,42 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 	//Find which comparison is being used
 	//Key: if(A [comp] B)
 	if(strstr(line, "==") > 0) { //A, B, bne
-		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '=') + 2, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 2, curr_func, stack, string_set);
 
 		fprintf(output_file, "\tbne end_if_%d\n", if_ct);
 	} else if(strstr(line, "!=") > 0) { //A, B, beq
-		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 1, curr_func, stack, string_set);
 
 		fprintf(output_file, "\tbeq end_if_%d\n", if_ct);
 	} else if(strstr(line, ">=") > 0) { //A, B, slt, 1, beq
-		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 1, curr_func, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbeq end_if_%d\n", if_ct);
 	} else if(strstr(line, "<=") > 0) { //B, A, slt, 1, beq
-		parse_exp(output_file, strchr(line, '=') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '=') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, curr_func, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbeq end_if_%d\n", if_ct);
 	} else if(strchr(line, '>') > 0) { //B, A, slt, 1, bne
-		parse_exp(output_file, strchr(line, '>') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '>') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, curr_func, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbne end_if_%d\n", if_ct);
 	} else if(strchr(line, '<') > 0) { //A, B, slt, 1, bne
-		parse_exp(output_file, strchr(line, '(') + 1, stack, string_set);
-		parse_exp(output_file, strchr(line, '<') + 1, stack, string_set);
+		parse_exp(output_file, strchr(line, '(') + 1, curr_func, stack, string_set);
+		parse_exp(output_file, strchr(line, '<') + 1, curr_func, stack, string_set);
 
 		fprintf(output_file, "\tslt\n\tpushi 1\n");
 		fprintf(output_file, "\tbne end_if_%d\n", if_ct);
 	} else {
 		printf("ERROR: Unrecognized comparison in line %s\n", headline);
-		parse_exp(output_file, strchr(headline, '(') + 1, stack, string_set);
+		parse_exp(output_file, strchr(headline, '(') + 1, curr_func, stack, string_set);
 	}
 
 #ifndef CLEAN
@@ -528,10 +537,10 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 #endif
 	free(line);
 
-	line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
+	line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr, curr_func);
 
 	if(strstr(line, "return") == line) { //there was a return statement ending this block
-		parse_exp(output_file, line + 6, stack, string_set);
+		parse_exp(output_file, line + 6, curr_func, stack, string_set);
 		while(!strchr(line, '}')) {
 			free(line);
 			line = read_next_line(input_file, output_file, line_ct);
@@ -548,13 +557,13 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
 		} else { //There is an else statement
 			fprintf(output_file, "\tpushi end_else_%d\n\tjpop\nend_if_%d:\n", if_ct, if_ct);
 			free(line);
-			line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
+			line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr, curr_func);
 			fprintf(output_file, "end_else_%d:\n", if_ct);
 		}
 	} else { //There is an else statement
 		fprintf(output_file, "\tpushi end_else_%d\n\tjpop\nend_if_%d:\n", if_ct, if_ct);
 		free(line);
-		line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr);
+		line = read_block(input_file, output_file, stack, local_set, block_ct, line_ct, top_addr, curr_func);
 		fprintf(output_file, "end_else_%d:\n", if_ct);
 	}
 
@@ -570,36 +579,33 @@ char * read_if_block(FILE *input_file, FILE *output_file, Block_ct *block_ct, St
  * @param block_ct Keeps track of the number of each type of block so as to give each unique names.
  * @param line_ct The line number that is currently being parsed.
  * @param ret_type The type of function this is.
+ * @param curr_func The name of the function currently being parsed.
  */
-void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *block_ct, Type ret_type, int *line_ct) {
+void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *block_ct, Type ret_type, int *line_ct, char *curr_func) {
 	Stack stack = {NULL, 0};
 	String_list string_set[LIST_LEN];
 	char *last_line;
-	char *popped_var;
 	int num_pars = 0;
 
 	for(int i = 0; i < LIST_LEN; i++) { //Initialize each individual list in the string set
 		string_set[i].length = 0;
 	}
 
-	read_func_header(&stack, headline);
+	read_func_header(&stack, headline, curr_func);
 	if(strchr(headline, '{') <= 0) //Check if there is no opening curly brace on the headline
 		read_next_line(input_file, output_file, line_ct);
 
 	// Make memory locations for the parameters
 	for(int i = stack.size - 1; i >= 0; i--) {
 		num_pars++;
-		fprintf(output_file, "\tpushi %#x\n\tpop\n", MEM_STRT + VAR_SIZE * i);
-		string_set_add(string_set, stack.names[i], MEM_STRT + VAR_SIZE * i);
-		stack_pop(&stack);
+		fprintf(output_file, "\tpushi %s\n\tpop\n", stack_pop(&stack));
 	}
 
-	last_line = read_block(input_file, output_file, &stack, &string_set[0], block_ct, line_ct, MEM_STRT + (num_pars - 1) * VAR_SIZE);
+	last_line = read_block(input_file, output_file, &stack, &string_set[0], block_ct, line_ct, MEM_STRT + (num_pars - 1) * VAR_SIZE, curr_func);
 
 	//Empty stack
 	while(stack.size > 0) {
-		popped_var = stack_pop(&stack);
-		fprintf(output_file, "\tpushi %#x\n\tpop\n", string_set_remove_str(string_set, popped_var));
+		fprintf(output_file, "\tpushi %s\n\tpop\n", stack_pop(&stack));
 	}
 
 	switch(ret_type) {
@@ -615,7 +621,7 @@ void read_func(FILE *input_file, FILE *output_file, char *headline, Block_ct *bl
 		}
 		break;
 	case INT:
-		parse_exp(output_file, last_line + 6, &stack, string_set);
+		parse_exp(output_file, last_line + 6, curr_func, &stack, string_set);
 		free(last_line);
 		last_line = read_next_line(input_file, output_file, line_ct);
 		while(!strchr(last_line, '}')) {
@@ -681,9 +687,9 @@ int main(int argc, char *argv[]) {
 				fprintf(output_file, "%s:\n", name);
 #endif
 				if(strcmp(name, "main") == 0)
-					read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
+					read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct, name);
 				else
-					read_func(input_file, output_file, line, &block_ct, INT, &line_ct);
+					read_func(input_file, output_file, line, &block_ct, INT, &line_ct, name);
 			} else if(strstr(first_word, "void") == first_word) { //Found a void function
 #ifdef DEBUG
 				printf("Found void function %s.\n", read_word(line + 5));
@@ -697,9 +703,9 @@ int main(int argc, char *argv[]) {
 				fprintf(output_file, "%s:\n", name);
 #endif
 					if(strcmp(name, "main") == 0)
-						read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct);
+						read_func(input_file, output_file, line, &block_ct, MAIN, &line_ct, name);
 					else
-						read_func(input_file, output_file, line, &block_ct, VOID, &line_ct);
+						read_func(input_file, output_file, line, &block_ct, VOID, &line_ct, name);
 				}
 			}
 		} else {
